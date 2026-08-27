@@ -1,0 +1,15 @@
+.vercel
+.env*
+!.env.example
+node_modules/
+dist/
+dist-server/
+*.log
+.DS_Store
+.chrome-*/
+clarifi-apple*.png
+.agents/
+screenshots/
+uploads/
+.thumbnail
+support.js

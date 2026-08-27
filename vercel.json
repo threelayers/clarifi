@@ -1,0 +1,9 @@
+{
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/index.ts" },
+    { "source": "/", "destination": "/ClariFi.dc.html" },
+    { "source": "/(.*)", "destination": "/ClariFi.dc.html" }
+  ],
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist"
+}

@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: clarifi
+      POSTGRES_USER: clarifi
+      POSTGRES_PASSWORD: clarifi
+    ports:
+      - "5432:5432"
+    volumes:
+      - clarifi-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U clarifi -d clarifi"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  clarifi-postgres:
