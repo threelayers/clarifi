@@ -112,6 +112,8 @@ export function ClientView(props: ClientViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const sideToolsShellRef = useRef<HTMLDivElement>(null);
   const questionInputRef = useRef<HTMLTextAreaElement>(null);
+  const explanationRef = useRef<HTMLElement>(null);
+  const awaitingExplanationRef = useRef(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const expandedCanvasRef = useRef<HTMLCanvasElement>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
@@ -256,6 +258,16 @@ export function ClientView(props: ClientViewProps) {
     if (record.length > 0) return [];
     return focusItems.slice(0, 2).map((point) => ({ point, status: "action" as const }));
   }, [focusItems, record]);
+
+  useEffect(() => {
+    if (props.loading || !awaitingExplanationRef.current || !latestExplanation) return;
+    awaitingExplanationRef.current = false;
+    const frame = window.requestAnimationFrame(() => {
+      explanationRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      window.setTimeout(() => explanationRef.current?.focus({ preventScroll: true }), 450);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [latestExplanation, props.loading]);
 
   const renderCanvas = (image = "") => {
     const canvases = [canvasRef.current, expandedCanvasRef.current].filter(
@@ -442,6 +454,7 @@ export function ClientView(props: ClientViewProps) {
   const send = (text = input) => {
     const trimmed = text.trim();
     if (!trimmed) return;
+    awaitingExplanationRef.current = true;
     props.onSend(trimmed);
     setInput("");
   };
@@ -682,7 +695,13 @@ export function ClientView(props: ClientViewProps) {
               </section>
             </div>
 
-            <section className="mt-9" aria-labelledby="explanation-heading">
+            <section
+              ref={explanationRef}
+              className="mt-9 scroll-mt-6 outline-none"
+              aria-labelledby="explanation-heading"
+              aria-live="polite"
+              tabIndex={-1}
+            >
               <div className="mb-4 border-b border-[#D8DEE5] pb-3">
                 <h2 id="explanation-heading" className="text-base font-semibold text-[#17212B]">Key explanation</h2>
                 <p className="mt-1 text-xs text-[#74808B]">The latest question, explanation and supporting wording</p>
