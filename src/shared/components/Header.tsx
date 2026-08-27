@@ -15,6 +15,62 @@ type HeaderProps = {
 };
 
 export function Header({ view, hasApiKey, currentUser, syncStatus, persistenceMode, sessionTitle, onViewChange, onSettings, onLogout, onSession }: HeaderProps) {
+  if (view === "client") {
+    const connectionLabel = syncStatus === "saving" || syncStatus === "loading"
+      ? "Saving"
+      : syncStatus === "error"
+        ? "Connection issue"
+        : persistenceMode === "postgres"
+          ? "Connected"
+          : "Demo session";
+
+    return (
+      <header className="flex h-14 shrink-0 items-center border-b border-[#C8D0D8] bg-white px-4 sm:px-5">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[#0B3A5B] text-white">
+            <MessageSquareText size={16} />
+          </div>
+          <div className="min-w-0 leading-tight">
+            <div className="text-[15px] font-semibold text-[#17212B]">ClariFi</div>
+            <div className="hidden text-[10px] font-medium text-[#68737E] sm:block">Insurance Clarity Copilot</div>
+          </div>
+        </div>
+
+        <button className="hidden min-w-0 flex-1 px-5 text-center md:block" onClick={onSession} title="Open consultation sessions">
+          <div className="truncate text-xs font-semibold text-[#344552]">{sessionTitle || "Current consultation"}</div>
+          <div className="mt-0.5 flex items-center justify-center gap-1.5 text-[10px] text-[#74808B]">
+            <span className="h-1.5 w-1.5 rounded-full bg-[#237A4B]" /> Consultation in progress
+          </div>
+        </button>
+
+        <div className="flex flex-1 items-center justify-end gap-1 sm:gap-2">
+          {currentUser?.role === "advisor" ? (
+            <div className="hidden items-center gap-1 rounded-md border border-[#C9D1DA] bg-[#F3F5F7] p-0.5 lg:flex">
+              <button className="rounded bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#075C91]">Client view</button>
+              <button className="rounded px-2.5 py-1.5 text-[11px] font-semibold text-[#68737E] hover:text-[#17212B]" onClick={() => onViewChange("advisor")}>Advisor view</button>
+            </div>
+          ) : (
+            <span className="hidden text-xs font-semibold text-[#344552] lg:inline">Client view</span>
+          )}
+          <button
+            className={`hidden items-center gap-1.5 px-2 py-1.5 text-[11px] font-medium sm:flex ${syncStatus === "error" ? "text-[#B4233A]" : "text-[#5E6974]"}`}
+            onClick={onSession}
+            title={`${sessionTitle || "Current consultation"} · ${persistenceMode === "postgres" ? "PostgreSQL" : "demo memory"}`}
+          >
+            {persistenceMode === "postgres" ? <Database size={13} /> : <Cloud size={13} />}
+            {connectionLabel}
+          </button>
+          <button className="flex h-8 w-8 items-center justify-center rounded-md text-[#5E6974] hover:bg-[#EEF2F5] hover:text-[#075C91]" onClick={onSettings} aria-label="Open settings" title="Settings">
+            <Settings size={16} />
+          </button>
+          <button className="flex h-8 w-8 items-center justify-center rounded-md text-[#5E6974] hover:bg-[#FFF0F1] hover:text-[#B4233A]" onClick={onLogout} aria-label="Log out" title="Exit consultation">
+            <LogOut size={16} />
+          </button>
+        </div>
+      </header>
+    );
+  }
+
   return (
     <header className="flex h-16 shrink-0 items-center justify-between gap-4 border-b border-line bg-white/72 px-5 shadow-[0_10px_40px_rgba(0,0,0,.045)] backdrop-blur-2xl">
       <div className="flex min-w-[210px] items-center gap-3">
@@ -31,14 +87,14 @@ export function Header({ view, hasApiKey, currentUser, syncStatus, persistenceMo
 
       <div className="flex rounded-lg border border-[#E5E5EA] bg-white/45 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,.65)] backdrop-blur-xl">
         <button
-          className={`tab-button ${view === "client" ? "tab-active" : "tab-idle"}`}
+          className="tab-button tab-idle"
           onClick={() => onViewChange("client")}
         >
           Client view
         </button>
         {currentUser?.role === "advisor" && (
           <button
-            className={`tab-button ${view === "advisor" ? "tab-active" : "tab-idle"}`}
+            className="tab-button tab-active"
             onClick={() => onViewChange("advisor")}
           >
             Advisor view
