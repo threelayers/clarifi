@@ -75,10 +75,12 @@ const parseTranscript = (transcript: string) =>
     .filter(Boolean)
     .map((line, index) => {
       const timed = line.match(/^\[(\d{1,2}:\d{2})\]\s*\[(Client|Advisor)\]\s*(.*)$/i);
+      const neutralTimed = line.match(/^\[(\d{1,2}:\d{2})\]\s*(.*)$/i);
       const labelled = line.match(/^\[(Client|Advisor)\]\s*(.*)$/i);
-      if (timed) return { id: `${index}-${line}`, time: timed[1], speaker: timed[2], text: timed[3] };
-      if (labelled) return { id: `${index}-${line}`, time: "Recorded", speaker: labelled[1], text: labelled[2] };
-      return { id: `${index}-${line}`, time: "Recorded", speaker: "Consultation", text: line };
+      if (timed) return { id: `${index}-${line}`, time: timed[1], text: timed[3] };
+      if (neutralTimed) return { id: `${index}-${line}`, time: neutralTimed[1], text: neutralTimed[2] };
+      if (labelled) return { id: `${index}-${line}`, time: "Recorded", text: labelled[2] };
+      return { id: `${index}-${line}`, time: "Recorded", text: line };
     });
 
 const sideToolsMaxWidth = () => {
@@ -97,7 +99,6 @@ const savedSideToolsWidth = () => {
 
 export function ClientView(props: ClientViewProps) {
   const [input, setInput] = useState("");
-  const [speaker, setSpeaker] = useState<"Client" | "Advisor">("Client");
   const [speechLang, setSpeechLang] = useState("en-SG");
   const [isListening, setIsListening] = useState(false);
   const [speechNotice, setSpeechNotice] = useState("");
@@ -117,16 +118,11 @@ export function ClientView(props: ClientViewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const expandedCanvasRef = useRef<HTMLCanvasElement>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
-  const speakerRef = useRef(speaker);
   const transcriptRef = useRef(props.sessionTranscript);
   const sideToolsWidthRef = useRef(sideToolsWidth);
   const drawingRef = useRef(false);
   const lastPointRef = useRef<{ x: number; y: number } | null>(null);
   const canvasHistoryRef = useRef<string[]>([]);
-
-  useEffect(() => {
-    speakerRef.current = speaker;
-  }, [speaker]);
 
   useEffect(() => {
     transcriptRef.current = props.sessionTranscript;
@@ -388,7 +384,7 @@ export function ClientView(props: ClientViewProps) {
     const trimmed = text.trim();
     if (!trimmed) return;
     const time = new Date().toLocaleTimeString("en-SG", { hour: "2-digit", minute: "2-digit", hour12: false });
-    const line = `[${time}] [${speakerRef.current}] ${trimmed}`;
+    const line = `[${time}] ${trimmed}`;
     const current = transcriptRef.current.trim();
     const nextTranscript = current ? `${current}\n${line}` : line;
     transcriptRef.current = nextTranscript;
@@ -497,21 +493,8 @@ export function ClientView(props: ClientViewProps) {
           </button>
         </div>
 
-        <div className="mb-3 flex items-center gap-2">
-          <div className="flex rounded-md border border-[#C9D1DA] bg-[#E9EDF2] p-0.5">
-            {(["Client", "Advisor"] as const).map((item) => (
-              <button
-                key={item}
-                className={`rounded px-3 py-1.5 text-[11px] font-semibold transition ${
-                  speaker === item ? "bg-white text-[#075C91]" : "text-[#66717D] hover:text-[#17212B]"
-                }`}
-                onClick={() => setSpeaker(item)}
-              >
-                {item}
-              </button>
-            ))}
-          </div>
-          <label className="ml-auto flex min-w-0 items-center gap-1.5 text-[11px] font-medium text-[#4D5965]">
+        <div className="mb-3 flex justify-end">
+          <label className="flex min-w-0 items-center gap-1.5 text-[11px] font-medium text-[#4D5965]">
             <Languages size={13} />
             <select
               value={speechLang}
@@ -531,7 +514,6 @@ export function ClientView(props: ClientViewProps) {
             {transcriptRows.map((row) => (
               <div key={row.id}>
                 <div className="flex items-center gap-2 text-[10px] text-[#7A858F]">
-                  <span className="font-semibold text-[#34485A]">{row.speaker}</span>
                   <span>{row.time}</span>
                 </div>
                 <p className="mt-1 text-xs leading-5 text-[#35424E]">{row.text}</p>
