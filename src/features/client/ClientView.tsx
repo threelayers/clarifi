@@ -1,9 +1,7 @@
 import {
   AlertTriangle,
-  Check,
-  Circle,
-  Clock3,
-  HelpCircle,
+  ClipboardList,
+  FileText,
   Languages,
   Maximize2,
   Minimize2,
@@ -12,11 +10,15 @@ import {
   NotebookPen,
   Quote,
   Send,
+  ShieldCheck,
   Users
 } from "lucide-react";
 import type { PointerEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { clauses, profile } from "@/domain/policy";
+import { ClariFiAiMark } from "@/shared/components/ClariFiAiMark";
+import { LoadingDots } from "@/shared/components/Header";
+import { compactText } from "@/shared/lib/text";
 import type { ClientMessage, DecisionOption, PolicyEvidence, PreMeetingPrep, Understanding } from "@/types/clarifi";
 
 type ClientViewProps = {
@@ -51,9 +53,9 @@ type SpeechRecognitionLike = {
 };
 
 const statusMeta = {
-  covered: { label: "Understood well" },
-  action: { label: "Needs clarification" },
-  not_covered: { label: "Not covered yet" }
+  covered: { label: "Understood well", dot: "bg-[#1E8E5A]", bg: "bg-[#F1F8F3]", border: "border-[#DCEDE3]" },
+  action: { label: "Needs clarification", dot: "bg-[#C77700]", bg: "bg-[#FFF6E8]", border: "border-[#F1DFB8]" },
+  not_covered: { label: "Not covered / unknown", dot: "bg-[#C8102E]", bg: "bg-[#FDECEC]", border: "border-[#F6D5D8]" }
 };
 
 const speechLanguages = [
@@ -65,23 +67,8 @@ const speechLanguages = [
 
 const SIDE_TOOLS_WIDTH_KEY = "clarifi.clientSideToolsWidth";
 const SIDE_TOOLS_MIN_WIDTH = 360;
-const SIDE_TOOLS_DEFAULT_WIDTH = 408;
-const SIDE_TOOLS_MAX_WIDTH = 520;
-
-const parseTranscript = (transcript: string) =>
-  transcript
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line, index) => {
-      const timed = line.match(/^\[(\d{1,2}:\d{2})\]\s*\[(Client|Advisor)\]\s*(.*)$/i);
-      const neutralTimed = line.match(/^\[(\d{1,2}:\d{2})\]\s*(.*)$/i);
-      const labelled = line.match(/^\[(Client|Advisor)\]\s*(.*)$/i);
-      if (timed) return { id: `${index}-${line}`, time: timed[1], text: timed[3] };
-      if (neutralTimed) return { id: `${index}-${line}`, time: neutralTimed[1], text: neutralTimed[2] };
-      if (labelled) return { id: `${index}-${line}`, time: "Recorded", text: labelled[2] };
-      return { id: `${index}-${line}`, time: "Recorded", text: line };
-    });
+const SIDE_TOOLS_DEFAULT_WIDTH = 440;
+const SIDE_TOOLS_MAX_WIDTH = 560;
 
 const sideToolsMaxWidth = () => {
   if (typeof window === "undefined") return SIDE_TOOLS_MAX_WIDTH;
@@ -106,15 +93,13 @@ export function ClientView(props: ClientViewProps) {
   const [showSessionPlan, setShowSessionPlan] = useState(false);
   const [showExpandedNotes, setShowExpandedNotes] = useState(false);
   const [useSideTools, setUseSideTools] = useState(() =>
-    typeof window !== "undefined" ? window.matchMedia("(min-width: 960px)").matches : false
+    typeof window !== "undefined" ? window.matchMedia("(min-width: 1280px)").matches : false
   );
   const [sideToolsWidth, setSideToolsWidth] = useState(savedSideToolsWidth);
   const [isResizingSideTools, setIsResizingSideTools] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const sideToolsShellRef = useRef<HTMLDivElement>(null);
-  const questionInputRef = useRef<HTMLTextAreaElement>(null);
-  const explanationRef = useRef<HTMLElement>(null);
-  const awaitingExplanationRef = useRef(false);
+  const didMountRef = useRef(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const expandedCanvasRef = useRef<HTMLCanvasElement>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
@@ -123,6 +108,16 @@ export function ClientView(props: ClientViewProps) {
   const drawingRef = useRef(false);
   const lastPointRef = useRef<{ x: number; y: number } | null>(null);
   const canvasHistoryRef = useRef<string[]>([]);
+
+  useEffect(() => {
+    if (!scrollRef.current) return;
+    if (props.messages.length <= 1 && !props.loading) return;
+    if (!didMountRef.current) {
+      didMountRef.current = true;
+      return;
+    }
+    scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [props.messages, props.loading]);
 
   useEffect(() => {
     transcriptRef.current = props.sessionTranscript;
@@ -182,7 +177,7 @@ export function ClientView(props: ClientViewProps) {
   }, [props.handwrittenNoteImage, showExpandedNotes]);
 
   useEffect(() => {
-    const media = window.matchMedia("(min-width: 960px)");
+    const media = window.matchMedia("(min-width: 1280px)");
     const update = () => setUseSideTools(media.matches);
     update();
     media.addEventListener("change", update);
@@ -231,39 +226,7 @@ export function ClientView(props: ClientViewProps) {
     }),
     [record]
   );
-  const focusItems = useMemo(
-    () => props.preMeetingPrep.clientWidget.bullets.slice(0, 3),
-    [props.preMeetingPrep.clientWidget.bullets]
-  );
-  const transcriptRows = useMemo(() => parseTranscript(props.sessionTranscript).slice(-5), [props.sessionTranscript]);
-  const latestUserMessage = useMemo(
-    () => [...props.messages].reverse().find((message) => message.role === "user"),
-    [props.messages]
-  );
-  const latestExplanation = useMemo(
-    () => [...props.messages].reverse().find((message) => message.role === "assistant" && message.id !== props.messages[0]?.id),
-    [props.messages]
-  );
-  const trackedTopics = useMemo<Understanding[]>(() => {
-    if (record.length > 0) return record.slice(0, 5);
-    return focusItems.map((point) => ({ point, status: "action" as const }));
-  }, [focusItems, record]);
-  const clarificationItems = useMemo(() => {
-    const items = record.filter((item) => item.status !== "covered");
-    if (items.length > 0) return items.slice(0, 3);
-    if (record.length > 0) return [];
-    return focusItems.slice(0, 2).map((point) => ({ point, status: "action" as const }));
-  }, [focusItems, record]);
-
-  useEffect(() => {
-    if (props.loading || !awaitingExplanationRef.current || !latestExplanation) return;
-    awaitingExplanationRef.current = false;
-    const frame = window.requestAnimationFrame(() => {
-      explanationRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-      window.setTimeout(() => explanationRef.current?.focus({ preventScroll: true }), 450);
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [latestExplanation, props.loading]);
+  const focusItems = props.preMeetingPrep.clientWidget.bullets.slice(0, 3);
 
   const renderCanvas = (image = "") => {
     const canvases = [canvasRef.current, expandedCanvasRef.current].filter(
@@ -284,7 +247,7 @@ export function ClientView(props: ClientViewProps) {
       const paintBackground = () => {
         context.fillStyle = "#FFFFFF";
         context.fillRect(0, 0, width, height);
-        context.strokeStyle = "rgba(22, 119, 168, 0.14)";
+        context.strokeStyle = "rgba(30, 142, 90, 0.12)";
         context.lineWidth = 1;
         for (let y = 32; y < height; y += 32) {
           context.beginPath();
@@ -383,10 +346,8 @@ export function ClientView(props: ClientViewProps) {
   const appendTranscript = (text: string) => {
     const trimmed = text.trim();
     if (!trimmed) return;
-    const time = new Date().toLocaleTimeString("en-SG", { hour: "2-digit", minute: "2-digit", hour12: false });
-    const line = `[${time}] ${trimmed}`;
     const current = transcriptRef.current.trim();
-    const nextTranscript = current ? `${current}\n${line}` : line;
+    const nextTranscript = current ? `${current}\n${trimmed}` : trimmed;
     transcriptRef.current = nextTranscript;
     props.onSessionTranscriptChange(nextTranscript);
   };
@@ -450,383 +411,449 @@ export function ClientView(props: ClientViewProps) {
   const send = (text = input) => {
     const trimmed = text.trim();
     if (!trimmed) return;
-    awaitingExplanationRef.current = true;
     props.onSend(trimmed);
     setInput("");
   };
 
-  const prepareAdvisorQuestion = (topic: string) => {
-    setInput(`What should I ask my advisor about ${topic.toLowerCase()}?`);
-    window.requestAnimationFrame(() => questionInputRef.current?.focus());
-  };
-
   const sessionTools = (
-    <div className="divide-y divide-[#D7DDE5]">
-      <section className="pb-5">
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-[#0B3A5B] text-xs font-bold text-white">TL</div>
-          <div className="min-w-0">
-            <div className="truncate text-[15px] font-semibold text-[#17212B]">{profile.name}</div>
-            <div className="mt-0.5 text-xs text-[#66717D]">28 · Freelance</div>
-            <div className="mt-0.5 truncate text-xs font-medium text-[#34485A]">PRUShield Plus</div>
+    <>
+      <div className="rounded-lg border border-[#E5E5EA] bg-white/58 px-3 py-3 text-xs font-medium text-[#3A3A3C] backdrop-blur-xl">
+        <div className="mb-2 flex items-center gap-2">
+          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-sci text-[11px] font-bold text-white">
+            TL
+          </div>
+          <div className="min-w-0 leading-tight">
+            <div className="truncate text-sm font-semibold text-ink">{profile.name}</div>
+            <div className="truncate text-[11px] font-medium text-[#6E6E73]">28 · Freelance · PRUShield Plus</div>
           </div>
         </div>
-      </section>
+        <div className="flex flex-wrap gap-1.5">
+          <span className="rounded-md border border-[#E5E5EA] bg-white/70 px-2 py-1 text-[10.5px] font-semibold text-[#3A3A3C]">
+            Knowledge only
+          </span>
+          <span className="flex items-center gap-1.5 rounded-md border border-[#CFE7FF] bg-white/70 px-2 py-1 text-[10.5px] font-semibold text-sci">
+            <span className="h-1.5 w-1.5 rounded-full bg-sciGold" /> Live check
+          </span>
+        </div>
+      </div>
 
-      <section className="py-5">
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <div>
-            <h2 className="text-sm font-semibold text-[#17212B]">Live conversation</h2>
-            <p className="mt-0.5 text-[11px] text-[#77818B]">Consultation transcript</p>
+      <div className="apple-panel-quiet p-3 shadow-none">
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-2 text-sm font-semibold text-sci">
+            <Mic size={17} /> Listening
           </div>
+          <span className="rounded-md bg-[#F3F9FF] px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-sci">
+            Session input
+          </span>
           <button
-            className={`flex h-8 w-8 items-center justify-center rounded-md border transition ${
-              isListening
-                ? "border-[#B4233A] bg-[#B4233A] text-white"
-                : "border-[#B7C5D1] bg-white text-[#075C91] hover:border-[#075C91]"
+            className={`ml-auto flex h-8 w-8 items-center justify-center rounded-lg text-white transition ${
+              isListening ? "bg-[#C8102E] hover:bg-[#A20C25]" : "bg-sci hover:bg-[#073B5B]"
             }`}
             onClick={isListening ? stopListening : startListening}
             aria-label={isListening ? "Stop listening" : "Start listening"}
-            title={isListening ? "Stop transcription" : "Start transcription"}
           >
-            {isListening ? <MicOff size={15} /> : <Mic size={15} />}
+            {isListening ? <MicOff size={16} /> : <Mic size={16} />}
           </button>
         </div>
-
-        <div className="mb-3 flex justify-end">
-          <label className="flex min-w-0 items-center gap-1.5 text-[11px] font-medium text-[#4D5965]">
+        <div className="mb-2 flex justify-end">
+          <label className="flex items-center gap-1 rounded-lg border border-[#E5E5EA] bg-white/58 px-2 py-1 text-[11px] font-semibold text-[#3A3A3C] backdrop-blur-xl">
             <Languages size={13} />
             <select
               value={speechLang}
               onChange={(event) => setSpeechLang(event.target.value)}
-              className="min-w-0 border-0 bg-transparent font-semibold outline-none"
-              aria-label="Transcription language"
+              className="bg-transparent text-[11px] font-bold outline-none"
             >
               {speechLanguages.map((language) => (
-                <option key={language.value} value={language.value}>{language.label}</option>
+                <option key={language.value} value={language.value}>
+                  {language.label}
+                </option>
               ))}
             </select>
           </label>
         </div>
-
-        {transcriptRows.length > 0 && (
-          <div className="mb-3 max-h-40 space-y-3 overflow-y-auto border-l-2 border-[#B9C7D4] pl-3">
-            {transcriptRows.map((row) => (
-              <div key={row.id}>
-                <div className="flex items-center gap-2 text-[10px] text-[#7A858F]">
-                  <span>{row.time}</span>
-                </div>
-                <p className="mt-1 text-xs leading-5 text-[#35424E]">{row.text}</p>
-              </div>
-            ))}
-          </div>
-        )}
-
         <textarea
           value={props.sessionTranscript}
           onChange={(event) => props.onSessionTranscriptChange(event.target.value)}
-          rows={3}
+          rows={useSideTools ? 3 : 3}
           placeholder="Add or correct the consultation transcript..."
-          className="w-full resize-none rounded-md border border-[#C9D1DA] bg-white px-3 py-2 text-xs leading-5 text-[#34404B] outline-none transition placeholder:text-[#8A949E] focus:border-[#1677A8] focus:ring-2 focus:ring-[#DCEEF7]"
+          className="w-full resize-none rounded-lg border border-[#D2D2D7] bg-white/72 px-3 py-2 text-[12.5px] font-medium leading-5 text-[#3A3A3C] outline-none backdrop-blur-xl transition placeholder:text-[#8E8E93] focus:border-sci focus:bg-white focus:ring-4 focus:ring-[#D6EBFF]"
         />
         {(interimText || speechNotice) && (
-          <p className={`mt-2 text-[11px] leading-4 ${speechNotice ? "text-[#9A6700]" : "text-[#52616D]"}`}>
+          <div className="mt-2 rounded-md border border-[#E5E5EA] bg-white/58 px-3 py-2 text-[11px] font-medium leading-5 text-[#3A3A3C] backdrop-blur-xl">
             {interimText || speechNotice}
-          </p>
+          </div>
         )}
-      </section>
+      </div>
 
-      <section className="pt-5">
-        <div className="mb-3 flex items-start justify-between gap-3">
+      <div className="apple-panel-quiet p-3 shadow-none">
+        <div className="mb-3 flex items-center justify-between gap-2">
           <div>
-            <h2 className="flex items-center gap-2 text-sm font-semibold text-[#17212B]"><NotebookPen size={16} /> My notes</h2>
-            <p className="mt-1 max-w-[290px] text-[11px] leading-4 text-[#68737E]">Private to you · Used only to improve clarity during this session</p>
+            <div className="flex items-center gap-2 text-sm font-semibold text-[#248A3D]">
+              <NotebookPen size={17} /> My notes
+            </div>
+            <div className="mt-0.5 text-[11px] font-medium text-[#6E6E73]">Private context for clarity</div>
           </div>
-          <span className="flex items-center gap-1 text-[11px] font-medium text-[#39704D]"><Check size={12} /> Saved</span>
-        </div>
-
-        <div className="mb-3 flex items-center justify-end gap-3 text-[11px] font-medium">
-          <button className="text-[#66717D] hover:text-[#075C91]" onClick={undoHandwriting} type="button">Undo</button>
-          <button className="text-[#8C3C46] hover:text-[#B4233A]" onClick={clearHandwriting} type="button">Clear</button>
-        </div>
-        <div className="relative">
-          <canvas
-            ref={canvasRef}
-            className={`${useSideTools ? "h-[168px]" : "h-[128px]"} w-full touch-none rounded-md border border-[#C9D1DA] bg-white`}
-            style={{ backgroundImage: "linear-gradient(to bottom, transparent 31px, rgba(22,119,168,.12) 32px)", backgroundSize: "100% 32px" }}
-            onPointerDown={startDrawing}
-            onPointerMove={draw}
-            onPointerUp={stopDrawing}
-            onPointerCancel={stopDrawing}
-            aria-label="Handwritten client notes canvas"
-          />
-          <button
-            type="button"
-            className="absolute bottom-2 right-2 flex items-center gap-1 rounded-md border border-[#B7C5D1] bg-white px-2 py-1 text-[10.5px] font-semibold text-[#075C91] hover:border-[#075C91]"
-            onClick={() => setShowExpandedNotes(true)}
-            aria-label="Expand handwriting notes"
-          >
-            <Maximize2 size={12} /> Expand
-          </button>
-        </div>
-        <textarea
-          value={props.clientNotes}
-          onChange={(event) => props.onClientNotesChange(event.target.value)}
-          rows={3}
-          placeholder="Type your own notes here..."
-          className="mt-3 w-full resize-none rounded-md border border-[#C9D1DA] bg-white px-3 py-2 text-xs leading-5 text-[#34404B] outline-none transition placeholder:text-[#8A949E] focus:border-[#1677A8] focus:ring-2 focus:ring-[#DCEEF7]"
-        />
-      </section>
-    </div>
-  );
-
-  return (
-    <>
-    <div className="flex min-h-0 flex-1 bg-[#F5F7F9]">
-      {useSideTools && (
-        <div ref={sideToolsShellRef} className="relative shrink-0" style={{ width: sideToolsWidth }}>
-          <aside className="h-full w-full overflow-y-auto border-r border-[#C8D0D8] bg-[#EDF1F4] px-5 py-5 pr-6" aria-label="Consultation tools">
-            {sessionTools}
-          </aside>
-          <div
-            role="separator"
-            tabIndex={0}
-            aria-label="Resize client tools sidebar"
-            aria-orientation="vertical"
-            aria-valuemin={SIDE_TOOLS_MIN_WIDTH}
-            aria-valuemax={sideToolsMaxWidth()}
-            aria-valuenow={sideToolsWidth}
-            className={`absolute right-[-5px] top-0 z-20 flex h-full w-2 cursor-col-resize items-center justify-center outline-none ${isResizingSideTools ? "bg-[#D7E8F2]" : "hover:bg-[#E0EBF2] focus-visible:bg-[#D7E8F2]"}`}
-            onPointerDown={(event) => { event.preventDefault(); setIsResizingSideTools(true); }}
-            onDoubleClick={() => persistSideToolsWidth(SIDE_TOOLS_DEFAULT_WIDTH)}
-            onKeyDown={(event) => {
-              if (event.key === "ArrowLeft") { event.preventDefault(); persistSideToolsWidth(sideToolsWidth - 24); }
-              if (event.key === "ArrowRight") { event.preventDefault(); persistSideToolsWidth(sideToolsWidth + 24); }
-              if (event.key === "Home") { event.preventDefault(); persistSideToolsWidth(SIDE_TOOLS_MIN_WIDTH); }
-              if (event.key === "End") { event.preventDefault(); persistSideToolsWidth(sideToolsMaxWidth()); }
-            }}
-            title="Drag to resize the consultation tools"
-          >
-            <span className="h-12 w-0.5 bg-[#AAB6C0]" />
+          <div className="rounded-md border border-[#CDEDD6] bg-[#F2FBF5] px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-[#248A3D]">
+            iPad ready
           </div>
         </div>
-      )}
-
-      <main className="flex min-w-0 flex-1 flex-col bg-[#FAFBFC]">
-        <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
-          <div className="mx-auto w-full max-w-[1080px] px-6 py-7 lg:px-10 lg:py-9">
-            {!useSideTools && <div className="mb-8 border-b border-[#D8DEE5] bg-[#EDF1F4] p-5">{sessionTools}</div>}
-
-            <header className="mb-8 border-b border-[#D8DEE5] pb-6">
-              <p className="mb-2 text-xs font-semibold text-[#075C91]">Current consultation</p>
-              <h1 className="text-[28px] font-semibold leading-tight text-[#142230]">Your consultation</h1>
-              <p className="mt-3 max-w-[780px] text-sm leading-6 text-[#5D6974]">
-                ClariFi helps you keep track of what has been discussed and identify anything that may need clarification. Your advisor remains responsible for financial advice.
-              </p>
-            </header>
-
-            <div className="grid gap-8 xl:grid-cols-2">
-              <section aria-labelledby="covered-heading">
-                <div className="mb-3 flex items-end justify-between border-b border-[#D8DEE5] pb-3">
-                  <div>
-                    <h2 id="covered-heading" className="text-base font-semibold text-[#17212B]">What we&apos;ve covered</h2>
-                    <p className="mt-1 text-xs text-[#74808B]">Learning points from this consultation</p>
-                  </div>
-                  <span className="text-xs font-medium text-[#5B6670]">{clarityCounts.clear} clear</span>
-                </div>
-                <div className="divide-y divide-[#E0E5EA]">
-                  {trackedTopics.map((item) => (
-                    <div key={item.point} className="flex items-start gap-3 py-3">
-                      {item.status === "covered" ? (
-                        <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#237A4B] text-white"><Check size={12} /></span>
-                      ) : (
-                        <Circle size={20} className={`mt-0.5 shrink-0 ${item.status === "action" ? "text-[#C48318]" : "text-[#AEB7C0]"}`} />
-                      )}
-                      <div>
-                        <p className="text-sm font-medium leading-5 text-[#293640]">{item.point}</p>
-                        <p className="mt-1 text-[11px] text-[#7A858F]">{statusMeta[item.status].label}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
-
-              <section aria-labelledby="clarify-heading">
-                <div className="mb-3 border-b border-[#D8DEE5] pb-3">
-                  <h2 id="clarify-heading" className="text-base font-semibold text-[#17212B]">Things to clarify</h2>
-                  <p className="mt-1 text-xs text-[#74808B]">Points that may benefit from further explanation</p>
-                </div>
-                <div className="divide-y divide-[#E0E5EA]">
-                  {clarificationItems.length === 0 ? (
-                    <p className="py-4 text-sm text-[#74808B]">No clarification points have been identified.</p>
-                  ) : clarificationItems.map((item) => (
-                    <div key={item.point} className="py-3">
-                      <div className="flex items-start gap-3">
-                        <HelpCircle size={19} className="mt-0.5 shrink-0 text-[#C48318]" />
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium leading-5 text-[#293640]">{item.point}</p>
-                          <p className="mt-1 text-xs leading-5 text-[#697580]">Confirm how this applies to your circumstances and policy.</p>
-                          <button className="mt-2 text-xs font-semibold text-[#075C91] hover:underline" onClick={() => prepareAdvisorQuestion(item.point)}>
-                            Ask advisor
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            </div>
-
-            <section
-              ref={explanationRef}
-              className="mt-9 scroll-mt-6 outline-none"
-              aria-labelledby="explanation-heading"
-              aria-live="polite"
-              tabIndex={-1}
-            >
-              <div className="mb-4 border-b border-[#D8DEE5] pb-3">
-                <h2 id="explanation-heading" className="text-base font-semibold text-[#17212B]">Key explanation</h2>
-                <p className="mt-1 text-xs text-[#74808B]">The latest question, explanation and supporting wording</p>
-              </div>
-
-              {latestUserMessage && latestExplanation ? (
-                <div className="rounded-lg border border-[#CDD5DD] bg-white">
-                  <div className="border-b border-[#E0E5EA] px-5 py-4">
-                    <div className="mb-1 text-[11px] font-semibold text-[#697580]">Your question</div>
-                    <h3 className="text-base font-semibold leading-6 text-[#17212B]">{latestUserMessage.text}</h3>
-                  </div>
-                  <div className="px-5 py-5">
-                    <div className="mb-2 text-[11px] font-semibold text-[#075C91]">General explanation</div>
-                    <p className="whitespace-pre-wrap text-sm leading-6 text-[#35424E]">{latestExplanation.text}</p>
-
-                    {latestExplanation.detected && (
-                      <div className="mt-5 flex items-start gap-3 border-l-4 border-[#C48318] bg-[#FFF8E8] px-4 py-3 text-sm leading-5 text-[#74551D]">
-                        <AlertTriangle size={17} className="mt-0.5 shrink-0" />
-                        <span><strong>Something to clarify:</strong> {latestExplanation.misunderstanding}</span>
-                      </div>
-                    )}
-
-                    <div className="mt-6 border-t border-[#E0E5EA] pt-5">
-                      <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold text-[#5E6974]"><Quote size={14} /> From your policy</div>
-                      {props.policyEvidence.length > 0 ? (
-                        <a
-                          className="block border-l-2 border-[#1677A8] bg-[#F3F7F9] px-4 py-3 text-sm leading-6 text-[#344552] hover:bg-[#EEF4F7]"
-                          href={`/api/policies/${props.sessionId}/documents/${props.policyEvidence[0].documentId}/download`}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          <span className="mb-1 block text-xs font-semibold text-[#075C91]">Page {props.policyEvidence[0].pageNumber} · {props.policyEvidence[0].fileName}</span>
-                          “{props.policyEvidence[0].quote}”
-                        </a>
-                      ) : relevantClause ? (
-                        <button className="block w-full border-l-2 border-[#1677A8] bg-[#F3F7F9] px-4 py-3 text-left text-sm leading-6 text-[#344552] hover:bg-[#EEF4F7]" onClick={() => props.setActiveClauseId(relevantClause.id)}>
-                          <span className="mb-1 block text-xs font-semibold text-[#075C91]">{relevantClause.code} · {relevantClause.title}</span>
-                          “{relevantClause.highlight}”
-                        </button>
-                      ) : (
-                        <p className="border-l-2 border-[#C7D0D8] bg-[#F5F7F8] px-4 py-3 text-sm text-[#77818B]">A relevant policy quotation will appear after one is identified.</p>
-                      )}
-                    </div>
-
-                    <div className="mt-5 border-t border-[#E0E5EA] pt-4">
-                      <div className="mb-1 text-[11px] font-semibold text-[#5E6974]">Advisor guidance</div>
-                      <p className="text-sm leading-6 text-[#4B5863]">{latestExplanation.teachBack || "Your advisor can confirm how this explanation applies to your personal circumstances and policy."}</p>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="border-l-2 border-[#9BB7C8] bg-[#F3F6F8] px-5 py-5">
-                  <p className="text-sm font-medium text-[#344552]">No question has been asked yet.</p>
-                  <p className="mt-1 text-xs leading-5 text-[#6D7882]">Ask about anything discussed during the consultation and the explanation will appear here with relevant policy wording.</p>
-                </div>
-              )}
-              {props.loading && <p className="mt-3 flex items-center gap-2 text-xs font-medium text-[#075C91]"><Clock3 size={14} /> Preparing a clear explanation...</p>}
-            </section>
-
-            <section className="mt-9 border-t border-[#D8DEE5] pt-6" aria-labelledby="plan-heading">
-              <button className="flex w-full items-center justify-between gap-4 text-left" onClick={() => setShowSessionPlan((current) => !current)} aria-expanded={showSessionPlan}>
-                <span>
-                  <span id="plan-heading" className="flex items-center gap-2 text-base font-semibold text-[#17212B]"><Users size={17} /> Advisor&apos;s discussion plan</span>
-                  <span className="mt-1 block text-xs text-[#74808B]">Read-only view of the paths selected for this consultation</span>
-                </span>
-                <span className="text-xs font-semibold text-[#075C91]">{showSessionPlan ? "Hide" : "View"}</span>
-              </button>
-              {showSessionPlan && (
-                <div className="mt-4 divide-y divide-[#E0E5EA] border-y border-[#D8DEE5]">
-                  {selectedDecisionOptions.length === 0 ? (
-                    <p className="py-4 text-sm text-[#74808B]">Your advisor has not selected a discussion path yet.</p>
-                  ) : selectedDecisionOptions.map((option) => (
-                    <div key={option.id} className="py-4">
-                      <div className="text-sm font-semibold text-[#25333E]">{option.title}</div>
-                      <p className="mt-1 text-sm leading-6 text-[#5D6974]">{option.clientSummary}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
-          </div>
-        </div>
-
-        <footer className="shrink-0 border-t border-[#CDD5DD] bg-white px-6 py-4 lg:px-10">
-          <div className="mx-auto max-w-[1080px]">
-            <label htmlFor="client-question" className="mb-2 block text-xs font-semibold text-[#344552]">Something unclear? Ask a question</label>
-            <div className="flex items-end gap-2">
-              <textarea
-                id="client-question"
-                ref={questionInputRef}
-                value={input}
-                onChange={(event) => setInput(event.target.value)}
-                onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); send(); } }}
-                rows={1}
-                placeholder="Type your question..."
-                className="max-h-[96px] min-h-10 flex-1 resize-none rounded-md border border-[#BFC8D1] bg-white px-3 py-2.5 text-sm leading-5 text-[#26333D] outline-none placeholder:text-[#8A949E] focus:border-[#1677A8] focus:ring-2 focus:ring-[#DCEEF7]"
-              />
-              <button className="flex h-10 items-center gap-2 rounded-md bg-[#075C91] px-4 text-sm font-semibold text-white hover:bg-[#064B76]" onClick={() => send()}>
-                Ask <Send size={14} />
-              </button>
-            </div>
-            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs">
-              {["What’s covered?", "Explain this term", "What should I ask my advisor?"].map((suggestion) => (
-                <button key={suggestion} className="text-[#5D6974] hover:text-[#075C91] hover:underline" onClick={() => setInput(suggestion)}>{suggestion}</button>
-              ))}
-            </div>
-          </div>
-        </footer>
-      </main>
-    </div>
-    {showExpandedNotes && (
-      <div
-        className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(10,27,40,.42)] p-4"
-        onClick={() => setShowExpandedNotes(false)}
-      >
-        <div
-          className="flex h-[min(820px,calc(100vh-32px))] w-[min(1120px,calc(100vw-32px))] flex-col overflow-hidden rounded-lg border border-[#BFC8D1] bg-white"
-          onClick={(event) => event.stopPropagation()}
-        >
-          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[#D5DCE3] bg-[#F4F6F8] px-5 py-4">
-            <div>
-              <div className="flex items-center gap-2 text-base font-semibold text-[#17212B]">
-                <NotebookPen size={19} /> My notes
-              </div>
-              <div className="mt-1 text-xs text-[#68737E]">Private to you · Used only to improve clarity during this session</div>
-            </div>
-            <div className="flex items-center gap-2">
+        <div className="mb-3">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <div className="text-[10px] font-bold uppercase tracking-wide text-[#6E6E73]">Write or type</div>
+            <div className="flex gap-1">
               <button
-                className="rounded-md px-2 py-2 text-xs font-semibold text-[#5E6974] hover:bg-[#E7EBEF]"
+                className="rounded-md border border-[#CDEDD6] bg-white/70 px-2 py-1 text-[10px] font-semibold text-[#248A3D] hover:border-[#248A3D]"
                 onClick={undoHandwriting}
                 type="button"
               >
                 Undo
               </button>
               <button
-                className="rounded-md px-2 py-2 text-xs font-semibold text-[#9A3A46] hover:bg-[#F8E8EA]"
+                className="rounded-md border border-[#FFD1D1] bg-white/70 px-2 py-1 text-[10px] font-semibold text-[#D70015] hover:border-[#D70015]"
+                onClick={clearHandwriting}
+                type="button"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+          <div className="relative">
+            <canvas
+              ref={canvasRef}
+              className={`${useSideTools ? "h-[156px]" : "h-[112px]"} w-full touch-none rounded-lg border border-[#D2D2D7] bg-white/85 shadow-[inset_0_0_0_1px_rgba(0,0,0,.025)]`}
+              style={{
+                backgroundImage: "linear-gradient(to bottom, transparent 30px, rgba(30, 142, 90, 0.12) 31px)",
+                backgroundSize: "100% 32px"
+              }}
+              onPointerDown={startDrawing}
+              onPointerMove={draw}
+              onPointerUp={stopDrawing}
+              onPointerCancel={stopDrawing}
+              aria-label="Handwritten client notes canvas"
+            />
+            <button
+              type="button"
+              className="absolute bottom-2 right-2 flex items-center gap-1 rounded-md border border-[#CDEDD6] bg-white/90 px-2 py-1 text-[10.5px] font-bold text-[#248A3D] shadow-[0_8px_24px_rgba(0,0,0,.10)] backdrop-blur-xl transition hover:border-[#248A3D] hover:bg-white"
+              onClick={() => setShowExpandedNotes(true)}
+              aria-label="Expand handwriting notes"
+            >
+              <Maximize2 size={12} /> Expand
+            </button>
+          </div>
+          <div className="mt-1 text-[10.5px] font-medium leading-4 text-[#6E6E73]">Saved to AI context.</div>
+        </div>
+        <textarea
+          value={props.clientNotes}
+          onChange={(event) => props.onClientNotesChange(event.target.value)}
+          rows={3}
+          placeholder="Optional typed notes or handwriting clarification..."
+          className="w-full resize-none rounded-lg border border-[#D2D2D7] bg-white/72 px-3 py-2 text-[12.5px] font-medium leading-5 text-[#3A3A3C] outline-none backdrop-blur-xl transition placeholder:text-[#8E8E93] focus:border-[#248A3D] focus:bg-white focus:ring-4 focus:ring-[#DDF6E6]"
+        />
+      </div>
+
+      {props.messages.length <= 1 && (
+        <div className="rounded-lg border border-[#A7D4FF] bg-[#E4F2FF] px-3 py-2 text-xs font-medium text-[#3A3A3C] shadow-[inset_0_1px_0_rgba(255,255,255,.72),0_8px_22px_rgba(0,113,227,.07)] backdrop-blur-xl">
+          <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-sci">
+            <ClipboardList size={17} /> Focus
+            <span className="rounded-md border border-[#DCEEFF] bg-white/80 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-[#6E6E73]">
+              Read-only
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {focusItems.map((bullet) => (
+              <span key={bullet} className="rounded-md border border-[#B8DCFF] bg-white/90 px-2.5 py-1.5 text-[12px] font-semibold shadow-[0_6px_18px_rgba(0,113,227,.06)]" title={bullet}>
+                {compactText(bullet, useSideTools ? 26 : 34)}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <details className="rounded-lg border border-[#C5D3DD] bg-[#E9F0F5] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,.72),0_8px_24px_rgba(0,0,0,.05)] backdrop-blur-xl">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold text-ink">
+          <span className="flex items-center gap-2">
+            <ShieldCheck size={17} className="text-sci" /> Clarity summary
+          </span>
+          <span className="rounded-md border border-[#DDE9F0] bg-white/80 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-[#6E6E73]">Optional</span>
+        </summary>
+        <div className="mt-3 space-y-3">
+          <div className="rounded-lg border border-[#BFDCCB] bg-[#E6F5EA] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,.72)]">
+            <div className="mb-2 text-[11px] font-bold uppercase tracking-wide text-[#6E6E73]">Learning points</div>
+            <div className="grid grid-cols-3 gap-1.5">
+              {[
+                ["bg-[#1E8E5A]", "Clear", clarityCounts.clear],
+                ["bg-[#C77700]", "Clarify", clarityCounts.clarify],
+                ["bg-[#C8102E]", "Unknown", clarityCounts.unknown]
+              ].map(([dot, label, count]) => (
+                <div key={label} className="rounded-md border border-white/80 bg-white/90 px-2 py-2 text-center text-[11px] font-semibold text-[#3A3A3C] shadow-[0_6px_18px_rgba(0,0,0,.035)]">
+                  <span className={`mx-auto mb-1 block h-1.5 w-1.5 rounded-full ${dot}`} />
+                  {label} {count}
+                </div>
+              ))}
+            </div>
+            {record.length > 0 && (
+              <div className="mt-2 space-y-1.5">
+                {record.slice(0, 2).map((item) => {
+                  const meta = statusMeta[item.status];
+                  return (
+                    <div key={item.point} className={`rounded-md border px-2 py-1.5 text-[12px] font-medium leading-5 ${meta.bg} ${meta.border}`} title={item.point}>
+                      {compactText(item.point, 62)}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+          <div className="rounded-lg border border-[#E2C184] bg-[#FFF0D7] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,.72)]">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-[#6E6E73]">
+                <Quote size={13} /> Policy quote
+              </div>
+              <span className="rounded-md border border-[#E8DCCB] bg-white/80 px-2 py-1 text-[11px] font-semibold text-[#3A3A3C]" title={props.policyFileName || "No advisor policy uploaded"}>
+                {props.policyFileName ? "Verified PDF" : "PDF pending"}
+              </span>
+            </div>
+            {props.policyEvidence.length > 0 ? (
+              <a
+                className="block w-full rounded-md border border-[#B9D7E8] bg-[#F0F8FC] p-2 text-left"
+                href={`/api/policies/${props.sessionId}/documents/${props.policyEvidence[0].documentId}/download`}
+                target="_blank"
+                rel="noreferrer"
+                title={`${props.policyEvidence[0].fileName}, page ${props.policyEvidence[0].pageNumber}`}
+              >
+                <div className="mb-1 text-[11px] font-semibold text-sci">Page {props.policyEvidence[0].pageNumber} · {compactText(props.policyEvidence[0].fileName, 28)}</div>
+                <div className="text-[12px] font-semibold leading-5 text-[#46423E]">{compactText(props.policyEvidence[0].quote, 110)}</div>
+              </a>
+            ) : !relevantClause ? (
+              <div className="rounded-md border border-dashed border-[#CDA963] bg-white/75 px-3 py-3 text-[12px] font-medium text-[#6E6E73]">No quote surfaced yet.</div>
+            ) : (
+              <button className="w-full rounded-md border border-[#B9D7E8] bg-[#F0F8FC] p-2 text-left" onClick={() => props.setActiveClauseId(relevantClause.id)}>
+                <div className="mb-1 text-[11px] font-semibold text-sci">{relevantClause.code}</div>
+                <div className="text-[12px] font-semibold leading-5 text-[#46423E]">{compactText(relevantClause.highlight, 68)}</div>
+              </button>
+            )}
+            <button
+              className="mt-3 w-full rounded-lg bg-ink px-3 py-2.5 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(0,0,0,.14)] hover:bg-black"
+              onClick={() => setShowSessionPlan((current) => !current)}
+            >
+              {showSessionPlan ? "Hide decision menu" : "View decision menu"}
+            </button>
+          </div>
+          {showSessionPlan && (
+            <div className="rounded-lg border border-[#E5E5EA] bg-white/58 p-3">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-[12px] font-semibold text-sci">
+                  <Users size={15} /> Decision menu
+                </div>
+                <span className="rounded-md bg-white/58 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-[#6E6E73]">
+                  Read-only
+                </span>
+              </div>
+              {selectedDecisionOptions.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-[#CFE7FF] bg-white/58 px-3 py-4 text-center text-[12px] font-medium leading-5 text-[#6E6E73]">
+                  Advisor-selected paths appear here.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {selectedDecisionOptions.map((option) => (
+                    <div key={option.id} className="rounded-lg border border-[#E5E5EA] bg-white/72 px-3 py-2" title={option.clientSummary}>
+                      <div className="mb-1 text-[12px] font-semibold text-sci">{option.title}</div>
+                      <div className="mb-2 text-[12px] font-semibold leading-5 text-[#46423E]">{compactText(option.clientSummary, 78)}</div>
+                      <div className="flex flex-wrap gap-1">
+                        {option.effects.slice(0, 2).map((effect) => (
+                          <div key={effect} className="rounded-full bg-[#F1F8F3] px-2 py-1 text-[10px] font-bold leading-4 text-[#1E6B43]" title={effect}>
+                            {compactText(effect, 28)}
+                          </div>
+                        ))}
+                        {option.limitations.slice(0, 1).map((limitation) => (
+                          <div key={limitation} className="rounded-full bg-[#FFF6E8] px-2 py-1 text-[10px] font-bold leading-4 text-[#9A6B00]" title={limitation}>
+                            {compactText(limitation, 28)}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                  <div className="rounded-lg bg-white/70 px-3 py-2 text-[11px] font-semibold leading-4 text-[#6C7680]">Neutral explanation only.</div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </details>
+    </>
+  );
+
+  return (
+    <>
+    <div className="flex min-h-0 flex-1">
+      <section className="flex min-w-0 flex-1 bg-paper">
+        {useSideTools && (
+          <div ref={sideToolsShellRef} className="relative shrink-0" style={{ width: sideToolsWidth }}>
+            <aside className="apple-rail h-full w-full overflow-y-auto border-r px-4 py-4 pr-5">
+              <div className="space-y-3">{sessionTools}</div>
+            </aside>
+            <div
+              role="separator"
+              tabIndex={0}
+              aria-label="Resize client tools sidebar"
+              aria-orientation="vertical"
+              aria-valuemin={SIDE_TOOLS_MIN_WIDTH}
+              aria-valuemax={sideToolsMaxWidth()}
+              aria-valuenow={sideToolsWidth}
+              className={`absolute right-[-6px] top-0 z-20 flex h-full w-3 cursor-col-resize items-center justify-center outline-none transition ${
+                isResizingSideTools ? "bg-[#D6EBFF]/65" : "hover:bg-[#D6EBFF]/45 focus-visible:bg-[#D6EBFF]/65"
+              }`}
+              onPointerDown={(event) => {
+                event.preventDefault();
+                setIsResizingSideTools(true);
+              }}
+              onDoubleClick={() => persistSideToolsWidth(SIDE_TOOLS_DEFAULT_WIDTH)}
+              onKeyDown={(event) => {
+                if (event.key === "ArrowLeft") {
+                  event.preventDefault();
+                  persistSideToolsWidth(sideToolsWidth - 24);
+                }
+                if (event.key === "ArrowRight") {
+                  event.preventDefault();
+                  persistSideToolsWidth(sideToolsWidth + 24);
+                }
+                if (event.key === "Home") {
+                  event.preventDefault();
+                  persistSideToolsWidth(SIDE_TOOLS_MIN_WIDTH);
+                }
+                if (event.key === "End") {
+                  event.preventDefault();
+                  persistSideToolsWidth(sideToolsMaxWidth());
+                }
+              }}
+              title="Drag to resize notes sidebar. Double-click to reset."
+            >
+              <span className="h-14 w-1 rounded-full bg-[#B9C7D1]" />
+            </div>
+          </div>
+        )}
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+            <div className="mx-auto max-w-[960px]">
+              {!useSideTools && <div className="mb-5 space-y-3">{sessionTools}</div>}
+            {props.messages.map((message) => (
+              <div key={message.id} className={`mb-5 flex items-start ${message.role === "user" ? "justify-end" : ""}`}>
+                {message.role === "assistant" && (
+                  <ClariFiAiMark className="mr-3 mt-1" />
+                )}
+                <div className={`flex max-w-[600px] flex-col gap-2 ${message.role === "user" ? "items-end" : ""}`}>
+                  <div className={message.role === "assistant" ? "bot-bubble" : "user-bubble"}>{message.text}</div>
+                  {message.detected && (
+                    <div className="flex items-start gap-2 rounded-lg border border-[#F1D49B] bg-[#FFF6E8] px-3 py-2 text-xs font-semibold leading-5 text-[#9A6B00]">
+                      <AlertTriangle size={15} className="mt-0.5 shrink-0" />
+                      Possible misunderstanding by client - {message.misunderstanding}
+                    </div>
+                  )}
+                  {(message.evidenceIds || []).length > 0 && (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-[#A39C95]">Relevant quote</span>
+                      {(message.evidenceIds || []).map((id) => {
+                        const clause = clauses.find((item) => item.id === id);
+                        return clause ? (
+                          <button key={id} className="evidence-chip" onClick={() => props.setActiveClauseId(id)}>
+                            <FileText size={12} /> {clause.code}
+                          </button>
+                        ) : null;
+                      })}
+                    </div>
+                  )}
+                  {message.teachBack && (
+                    <div className="flex items-start gap-2 rounded-lg border border-[#C9E4D3] bg-[#F1F8F3] px-3 py-2 text-sm font-medium leading-6 text-[#1E6B43]">
+                      <ShieldCheck size={16} className="mt-1 shrink-0" />
+                      <span>
+                        <b>Quick check:</b> {message.teachBack}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+            {props.loading && (
+              <div className="mb-5 flex items-center">
+                <ClariFiAiMark className="mr-3" />
+                <LoadingDots />
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="shrink-0 bg-paper px-6 pb-5 pt-3">
+          <div className="mx-auto max-w-[960px]">
+            {props.messages.length <= 2 && !props.loading && (
+              <div className="mb-3 flex flex-wrap gap-2">
+                {[
+                  "Summarise advisor",
+                  "Covered vs not",
+                  "Explain quote",
+                  "Ask advisor?"
+                ].map((suggestion) => (
+                  <button key={suggestion} className="suggestion" onClick={() => send(suggestion)}>
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="flex items-end gap-3 rounded-lg border border-[#D2D2D7] bg-white/80 py-2 pl-4 pr-2 shadow-[0_18px_55px_rgba(0,0,0,.08)] backdrop-blur-2xl">
+              <textarea
+                value={input}
+                onChange={(event) => setInput(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    send();
+                  }
+                }}
+                rows={1}
+                placeholder="Ask a follow-up during a pause..."
+                className="max-h-[120px] flex-1 resize-none border-none bg-transparent py-2 text-[14.5px] leading-6 outline-none"
+              />
+              <button className="send-button bg-sci hover:bg-[#073B5B]" onClick={() => send()} aria-label="Send message">
+                <Send size={18} />
+              </button>
+            </div>
+          </div>
+        </div>
+        </div>
+      </section>
+    </div>
+    {showExpandedNotes && (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(0,0,0,.30)] p-4 backdrop-blur-md"
+        onClick={() => setShowExpandedNotes(false)}
+      >
+        <div
+          className="apple-panel flex h-[min(820px,calc(100vh-32px))] w-[min(1120px,calc(100vw-32px))] flex-col overflow-hidden"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-line bg-white/72 px-5 py-4 backdrop-blur-2xl">
+            <div>
+              <div className="flex items-center gap-2 text-base font-semibold text-[#248A3D]">
+                <NotebookPen size={19} /> My notes
+              </div>
+              <div className="mt-0.5 text-xs font-medium text-[#6E6E73]">Large writing space saved to AI context.</div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                className="rounded-lg border border-[#CDEDD6] bg-white/70 px-3 py-2 text-xs font-semibold text-[#248A3D] hover:border-[#248A3D]"
+                onClick={undoHandwriting}
+                type="button"
+              >
+                Undo
+              </button>
+              <button
+                className="rounded-lg border border-[#FFD1D1] bg-white/70 px-3 py-2 text-xs font-semibold text-[#D70015] hover:border-[#D70015]"
                 onClick={clearHandwriting}
                 type="button"
               >
                 Clear
               </button>
               <button
-                className="flex items-center gap-2 rounded-md bg-[#0B3A5B] px-3 py-2 text-xs font-semibold text-white hover:bg-[#082E48]"
+                className="flex items-center gap-2 rounded-lg bg-ink px-3 py-2 text-xs font-semibold text-white hover:bg-black"
                 onClick={() => setShowExpandedNotes(false)}
                 type="button"
               >
@@ -834,12 +861,12 @@ export function ClientView(props: ClientViewProps) {
               </button>
             </div>
           </div>
-          <div className="min-h-0 flex-1 bg-[#EDF1F4] p-5">
+          <div className="min-h-0 flex-1 bg-[#FBFBFD] p-5">
             <canvas
               ref={expandedCanvasRef}
-              className="h-full min-h-[420px] w-full touch-none rounded-md border border-[#BFC8D1] bg-white"
+              className="h-full min-h-[420px] w-full touch-none rounded-lg border border-[#D2D2D7] bg-white shadow-[inset_0_0_0_1px_rgba(0,0,0,.025)]"
               style={{
-                backgroundImage: "linear-gradient(to bottom, transparent 31px, rgba(22, 119, 168, 0.14) 32px)",
+                backgroundImage: "linear-gradient(to bottom, transparent 30px, rgba(30, 142, 90, 0.12) 31px)",
                 backgroundSize: "100% 32px"
               }}
               onPointerDown={startDrawing}
@@ -849,13 +876,13 @@ export function ClientView(props: ClientViewProps) {
               aria-label="Expanded handwritten client notes canvas"
             />
           </div>
-          <div className="shrink-0 border-t border-[#D5DCE3] bg-white p-5">
+          <div className="shrink-0 border-t border-line bg-white/72 p-5 backdrop-blur-xl">
             <textarea
               value={props.clientNotes}
               onChange={(event) => props.onClientNotesChange(event.target.value)}
               rows={3}
               placeholder="Optional typed notes or handwriting clarification..."
-              className="w-full resize-none rounded-md border border-[#BFC8D1] bg-white px-3 py-2 text-[13px] leading-5 text-[#34404B] outline-none transition placeholder:text-[#8A949E] focus:border-[#1677A8] focus:ring-2 focus:ring-[#DCEEF7]"
+              className="w-full resize-none rounded-lg border border-[#D2D2D7] bg-white/72 px-3 py-2 text-[13px] font-medium leading-5 text-[#3A3A3C] outline-none backdrop-blur-xl transition placeholder:text-[#8E8E93] focus:border-[#248A3D] focus:bg-white focus:ring-4 focus:ring-[#DDF6E6]"
             />
           </div>
         </div>
