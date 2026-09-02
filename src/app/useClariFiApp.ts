@@ -1,5 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { coverageItems, decisionOptions, myInfoSections } from "@/domain/sessionData";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  coverageItems,
+  decisionOptions,
+  myInfoSections,
+} from "@/domain/sessionData";
 import {
   getCurrentSession,
   getCurrentUser,
@@ -16,7 +20,7 @@ import {
   searchPolicyDocument,
   sendAdvisorMessage,
   sendClientMessage,
-  uploadPolicyDocument
+  uploadPolicyDocument,
 } from "@/services/clarifiApi";
 import type {
   AdvisorMessage,
@@ -28,7 +32,7 @@ import type {
   Recap,
   SessionRecord,
   SessionSummary,
-  SessionState
+  SessionState,
 } from "@/types/clarifi";
 import {
   DEFAULT_COVERAGE_IDS,
@@ -37,9 +41,17 @@ import {
   defaultPreMeetingPrep,
   initialAdvisorMessage,
   initialClientMessage,
-  type ClariFiView
+  type ClariFiView,
 } from "./appDefaults";
-import { readStoredIds, readString, removeValue, savedModelOrDefault, storageKeys, writeStoredIds, writeString } from "./clientStorage";
+import {
+  readStoredIds,
+  readString,
+  removeValue,
+  savedModelOrDefault,
+  storageKeys,
+  writeStoredIds,
+  writeString,
+} from "./clientStorage";
 
 type LoginPayload = { accountId?: string; email?: string; password?: string };
 type SyncStatus = "local" | "loading" | "saved" | "saving" | "error";
@@ -55,32 +67,56 @@ export function useClariFiApp() {
   const [authError, setAuthError] = useState("");
   const [demoAccounts, setDemoAccounts] = useState<DemoAccount[]>([]);
   const [showSettings, setShowSettings] = useState(false);
-  const [activeSession, setActiveSession] = useState<SessionRecord | null>(null);
+  const [activeSession, setActiveSession] = useState<SessionRecord | null>(
+    null,
+  );
   const [sessionList, setSessionList] = useState<SessionSummary[]>([]);
   const [showSessions, setShowSessions] = useState(false);
   const [sessionLoading, setSessionLoading] = useState(false);
   const [sessionError, setSessionError] = useState("");
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("local");
-  const [persistenceMode, setPersistenceMode] = useState<"postgres" | "memory">("memory");
+  const [persistenceMode, setPersistenceMode] = useState<"postgres" | "memory">(
+    "memory",
+  );
   const [policyFileName, setPolicyFileName] = useState("");
   const [policyUploading, setPolicyUploading] = useState(false);
   const [policyError, setPolicyError] = useState("");
   const [policyEvidence, setPolicyEvidence] = useState<PolicyEvidence[]>([]);
-  const [clientMessages, setClientMessages] = useState<ClientMessage[]>([initialClientMessage]);
-  const [advisorMessages, setAdvisorMessages] = useState<AdvisorMessage[]>([initialAdvisorMessage]);
+  const [clientMessages, setClientMessages] = useState<ClientMessage[]>([
+    initialClientMessage,
+  ]);
+  const learningPoints = useMemo(() => {
+    const points = new Map<
+      string,
+      NonNullable<ClientMessage["understanding"]>[number]
+    >();
+    clientMessages.forEach((message) => {
+      (message.understanding || []).forEach((item) =>
+        points.set(item.point.trim().toLowerCase(), item),
+      );
+    });
+    return [...points.values()];
+  }, [clientMessages]);
+  const [advisorMessages, setAdvisorMessages] = useState<AdvisorMessage[]>([
+    initialAdvisorMessage,
+  ]);
   const [clientLoading, setClientLoading] = useState(false);
   const [advisorLoading, setAdvisorLoading] = useState(false);
   const [activeClauseId, setActiveClauseId] = useState<string | null>(null);
   const [recap, setRecap] = useState<Recap | null>(null);
   const [recapLoading, setRecapLoading] = useState(false);
   const [recapApproved, setRecapApproved] = useState(false);
-  const [preMeetingPrep, setPreMeetingPrep] = useState<PreMeetingPrep>(defaultPreMeetingPrep);
+  const [preMeetingPrep, setPreMeetingPrep] = useState<PreMeetingPrep>(
+    defaultPreMeetingPrep,
+  );
   const [preMeetingLoading, setPreMeetingLoading] = useState(false);
   const [clientNotes, setClientNotes] = useState("");
   const [sessionTranscript, setSessionTranscript] = useState("");
   const [handwrittenNoteImage, setHandwrittenNoteImage] = useState("");
-  const [selectedCoverageIds, setSelectedCoverageIds] = useState<string[]>(DEFAULT_COVERAGE_IDS);
-  const [selectedDecisionIds, setSelectedDecisionIds] = useState<string[]>(DEFAULT_DECISION_IDS);
+  const [selectedCoverageIds, setSelectedCoverageIds] =
+    useState<string[]>(DEFAULT_COVERAGE_IDS);
+  const [selectedDecisionIds, setSelectedDecisionIds] =
+    useState<string[]>(DEFAULT_DECISION_IDS);
   const sessionIdRef = useRef("");
   const sessionVersionRef = useRef(0);
   const dirtyRef = useRef(false);
@@ -96,8 +132,13 @@ export function useClariFiApp() {
     sessionIdRef.current = session.id;
     sessionVersionRef.current = session.version;
     setActiveSession(session);
-    setClientMessages(session.state.clientMessages.length ? session.state.clientMessages : [initialClientMessage]);
-    if (session.state.advisorMessages.length) setAdvisorMessages(session.state.advisorMessages);
+    setClientMessages(
+      session.state.clientMessages.length
+        ? session.state.clientMessages
+        : [initialClientMessage],
+    );
+    if (session.state.advisorMessages.length)
+      setAdvisorMessages(session.state.advisorMessages);
     setClientNotes(session.state.clientNotes);
     setSessionTranscript(session.state.sessionTranscript);
     setHandwrittenNoteImage(session.state.handwrittenNoteImage);
@@ -129,7 +170,9 @@ export function useClariFiApp() {
       setSessionList(result.sessions);
       setPersistenceMode(result.persistenceMode);
     } catch (error) {
-      setSessionError(error instanceof Error ? error.message : "Could not load sessions");
+      setSessionError(
+        error instanceof Error ? error.message : "Could not load sessions",
+      );
     } finally {
       setSessionLoading(false);
     }
@@ -141,8 +184,12 @@ export function useClariFiApp() {
     setClientNotes(readString(storageKeys.clientNotes));
     setSessionTranscript(readString(storageKeys.sessionTranscript));
     setHandwrittenNoteImage(readString(storageKeys.handwrittenNoteImage));
-    setSelectedCoverageIds(readStoredIds(storageKeys.coverageIds, DEFAULT_COVERAGE_IDS));
-    setSelectedDecisionIds(readStoredIds(storageKeys.decisionIds, DEFAULT_DECISION_IDS));
+    setSelectedCoverageIds(
+      readStoredIds(storageKeys.coverageIds, DEFAULT_COVERAGE_IDS),
+    );
+    setSelectedDecisionIds(
+      readStoredIds(storageKeys.decisionIds, DEFAULT_DECISION_IDS),
+    );
     void loadAuth();
   }, []);
 
@@ -154,11 +201,18 @@ export function useClariFiApp() {
   useEffect(() => {
     if (!activeSession?.id) return;
     const interval = window.setInterval(async () => {
-      if (dirtyRef.current || clientLoading || advisorLoading || document.hidden) return;
+      if (
+        dirtyRef.current ||
+        clientLoading ||
+        advisorLoading ||
+        document.hidden
+      )
+        return;
       try {
         const result = await getSession(activeSession.id);
         setPersistenceMode(result.persistenceMode);
-        if (result.session.version > sessionVersionRef.current) hydrateSession(result.session);
+        if (result.session.version > sessionVersionRef.current)
+          hydrateSession(result.session);
       } catch {
         setSyncStatus("error");
       }
@@ -166,13 +220,21 @@ export function useClariFiApp() {
     return () => window.clearInterval(interval);
   }, [activeSession?.id, advisorLoading, clientLoading, hydrateSession]);
 
-  useEffect(() => () => {
-    if (patchTimerRef.current) window.clearTimeout(patchTimerRef.current);
-  }, []);
+  useEffect(
+    () => () => {
+      if (patchTimerRef.current) window.clearTimeout(patchTimerRef.current);
+    },
+    [],
+  );
 
   const loadAuth = async () => {
-    const [accounts, current] = await Promise.allSettled([getDemoAccounts(), getCurrentUser()]);
-    setDemoAccounts(accounts.status === "fulfilled" ? accounts.value.accounts : []);
+    const [accounts, current] = await Promise.allSettled([
+      getDemoAccounts(),
+      getCurrentUser(),
+    ]);
+    setDemoAccounts(
+      accounts.status === "fulfilled" ? accounts.value.accounts : [],
+    );
     if (current.status === "fulfilled") {
       setCurrentUser(current.value.user);
       setViewState(current.value.user.role === "client" ? "client" : "advisor");
@@ -190,7 +252,9 @@ export function useClariFiApp() {
       setCurrentUser(result.user);
       setViewState(result.user.role === "client" ? "client" : "advisor");
     } catch (error) {
-      setAuthError(error instanceof Error ? error.message : "Could not sign in");
+      setAuthError(
+        error instanceof Error ? error.message : "Could not sign in",
+      );
     } finally {
       setAuthLoading(false);
     }
@@ -216,7 +280,9 @@ export function useClariFiApp() {
       setPersistenceMode(result.persistenceMode);
       setShowSessions(false);
     } catch (error) {
-      setSessionError(error instanceof Error ? error.message : "Could not open session");
+      setSessionError(
+        error instanceof Error ? error.message : "Could not open session",
+      );
     } finally {
       setSessionLoading(false);
     }
@@ -231,7 +297,9 @@ export function useClariFiApp() {
       await refreshSessions();
       setShowSessions(false);
     } catch (error) {
-      setSessionError(error instanceof Error ? error.message : "Could not create session");
+      setSessionError(
+        error instanceof Error ? error.message : "Could not create session",
+      );
       setSessionLoading(false);
     }
   };
@@ -245,7 +313,9 @@ export function useClariFiApp() {
       await refreshSessions();
       setShowSessions(false);
     } catch (error) {
-      setSessionError(error instanceof Error ? error.message : "Could not join session");
+      setSessionError(
+        error instanceof Error ? error.message : "Could not join session",
+      );
       setSessionLoading(false);
     }
   };
@@ -267,17 +337,20 @@ export function useClariFiApp() {
     }
   }, []);
 
-  const queuePatch = useCallback((patch: Partial<SessionState>) => {
-    queuedPatchRef.current = { ...queuedPatchRef.current, ...patch };
-    dirtyRef.current = true;
-    setSyncStatus("saving");
-    if (patchTimerRef.current) window.clearTimeout(patchTimerRef.current);
-    patchTimerRef.current = window.setTimeout(() => {
-      const queued = queuedPatchRef.current;
-      queuedPatchRef.current = {};
-      void savePatch(queued);
-    }, 650);
-  }, [savePatch]);
+  const queuePatch = useCallback(
+    (patch: Partial<SessionState>) => {
+      queuedPatchRef.current = { ...queuedPatchRef.current, ...patch };
+      dirtyRef.current = true;
+      setSyncStatus("saving");
+      if (patchTimerRef.current) window.clearTimeout(patchTimerRef.current);
+      patchTimerRef.current = window.setTimeout(() => {
+        const queued = queuedPatchRef.current;
+        queuedPatchRef.current = {};
+        void savePatch(queued);
+      }, 650);
+    },
+    [savePatch],
+  );
 
   const saveSettings = (newModel: string) => {
     writeString(storageKeys.model, newModel);
@@ -289,19 +362,29 @@ export function useClariFiApp() {
     sessionId: sessionIdRef.current || undefined,
     clientNotes,
     sessionTranscript,
-    handwrittenNoteImage
+    handwrittenNoteImage,
   });
 
   const sendClient = async (text: string) => {
     if (clientLoading) return;
-    const userMessage: ClientMessage = { id: createId(), role: "user", text, createdAt: new Date().toISOString() };
+    const userMessage: ClientMessage = {
+      id: createId(),
+      role: "user",
+      text,
+      createdAt: new Date().toISOString(),
+    };
     const nextMessages = [...clientMessages, userMessage];
     setClientMessages(nextMessages);
     setClientLoading(true);
     try {
-      const response = await sendClientMessage(nextMessages, { model }, sessionContext());
+      const response = await sendClientMessage(
+        nextMessages,
+        { model },
+        sessionContext(),
+      );
       const validIds = (response.evidenceIds || []).filter(Boolean);
-      if (response.documentEvidence?.length) setPolicyEvidence(response.documentEvidence);
+      if (response.documentEvidence?.length)
+        setPolicyEvidence(response.documentEvidence);
       const bot: ClientMessage = {
         id: createId(),
         role: "assistant",
@@ -311,20 +394,23 @@ export function useClariFiApp() {
         evidenceIds: validIds,
         teachBack: response.teachBack || "",
         understanding: response.understanding || [],
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
       };
       const completeMessages = [...nextMessages, bot];
       setClientMessages(completeMessages);
       setActiveClauseId((current) => validIds[0] || current);
     } catch (error) {
-      setClientMessages((current) => [...current, {
-        id: createId(),
-        role: "assistant",
-        text: `I could not reach the AI service just now. Please try again.\n\n(${error instanceof Error ? error.message : "Unknown error"})`,
-        evidenceIds: [],
-        understanding: [],
-        createdAt: new Date().toISOString()
-      }]);
+      setClientMessages((current) => [
+        ...current,
+        {
+          id: createId(),
+          role: "assistant",
+          text: `I could not reach the AI service just now. Please try again.\n\n(${error instanceof Error ? error.message : "Unknown error"})`,
+          evidenceIds: [],
+          understanding: [],
+          createdAt: new Date().toISOString(),
+        },
+      ]);
     } finally {
       setClientLoading(false);
     }
@@ -332,29 +418,46 @@ export function useClariFiApp() {
 
   const sendAdvisor = async (text: string) => {
     if (advisorLoading) return;
-    const userMessage: AdvisorMessage = { id: createId(), role: "user", text, createdAt: new Date().toISOString() };
+    const userMessage: AdvisorMessage = {
+      id: createId(),
+      role: "user",
+      text,
+      createdAt: new Date().toISOString(),
+    };
     const nextMessages = [...advisorMessages, userMessage];
     setAdvisorMessages(nextMessages);
     setAdvisorLoading(true);
     try {
-      const response = await sendAdvisorMessage(nextMessages, clientMessages, { model }, sessionContext());
-      if (response.documentEvidence?.length) setPolicyEvidence(response.documentEvidence);
-      const completeMessages: AdvisorMessage[] = [...nextMessages, {
-        id: createId(),
-        role: "assistant",
-        text: response.reply,
-        citations: response.citations || [],
-        createdAt: new Date().toISOString()
-      }];
+      const response = await sendAdvisorMessage(
+        nextMessages,
+        clientMessages,
+        { model },
+        sessionContext(),
+      );
+      if (response.documentEvidence?.length)
+        setPolicyEvidence(response.documentEvidence);
+      const completeMessages: AdvisorMessage[] = [
+        ...nextMessages,
+        {
+          id: createId(),
+          role: "assistant",
+          text: response.reply,
+          citations: response.citations || [],
+          createdAt: new Date().toISOString(),
+        },
+      ];
       setAdvisorMessages(completeMessages);
     } catch (error) {
-      setAdvisorMessages((current) => [...current, {
-        id: createId(),
-        role: "assistant",
-        text: `Could not reach the AI service. Please try again.\n\n(${error instanceof Error ? error.message : "Unknown error"})`,
-        citations: [],
-        createdAt: new Date().toISOString()
-      }]);
+      setAdvisorMessages((current) => [
+        ...current,
+        {
+          id: createId(),
+          role: "assistant",
+          text: `Could not reach the AI service. Please try again.\n\n(${error instanceof Error ? error.message : "Unknown error"})`,
+          citations: [],
+          createdAt: new Date().toISOString(),
+        },
+      ]);
     } finally {
       setAdvisorLoading(false);
     }
@@ -363,12 +466,22 @@ export function useClariFiApp() {
   const generateRecap = async () => {
     setRecapLoading(true);
     try {
-      const nextRecap = await requestRecap(clientMessages, { model }, sessionContext());
+      const nextRecap = await requestRecap(
+        clientMessages,
+        { model },
+        sessionContext(),
+      );
       setRecap(nextRecap);
       setRecapApproved(false);
       setViewState("advisor");
     } catch (error) {
-      setRecap({ covered: [], notCovered: [`Could not generate recap: ${error instanceof Error ? error.message : "Unknown error"}`], followUps: ["Try again shortly"] });
+      setRecap({
+        covered: [],
+        notCovered: [
+          `Could not generate recap: ${error instanceof Error ? error.message : "Unknown error"}`,
+        ],
+        followUps: ["Try again shortly"],
+      });
     } finally {
       setRecapLoading(false);
     }
@@ -378,10 +491,16 @@ export function useClariFiApp() {
     if (preMeetingLoading) return;
     setPreMeetingLoading(true);
     try {
-      const prep = await requestPreMeetingPrep({ model }, sessionIdRef.current || undefined);
+      const prep = await requestPreMeetingPrep(
+        { model },
+        sessionIdRef.current || undefined,
+      );
       setPreMeetingPrep(prep);
     } catch (error) {
-      setPreMeetingPrep({ ...defaultPreMeetingPrep, advisorBrief: `Could not generate live pre-meeting prep: ${error instanceof Error ? error.message : "Unknown error"}` });
+      setPreMeetingPrep({
+        ...defaultPreMeetingPrep,
+        advisorBrief: `Could not generate live pre-meeting prep: ${error instanceof Error ? error.message : "Unknown error"}`,
+      });
     } finally {
       setPreMeetingLoading(false);
     }
@@ -397,7 +516,9 @@ export function useClariFiApp() {
       writeString(storageKeys.policyFile, result.document.fileName);
       await loadCurrentSession();
     } catch (error) {
-      setPolicyError(error instanceof Error ? error.message : "Policy upload failed");
+      setPolicyError(
+        error instanceof Error ? error.message : "Policy upload failed",
+      );
     } finally {
       setPolicyUploading(false);
     }
@@ -407,10 +528,15 @@ export function useClariFiApp() {
     if (!sessionIdRef.current || query.trim().length < 2) return;
     setPolicyError("");
     try {
-      const result = await searchPolicyDocument(sessionIdRef.current, query.trim());
+      const result = await searchPolicyDocument(
+        sessionIdRef.current,
+        query.trim(),
+      );
       setPolicyEvidence(result.evidence);
     } catch (error) {
-      setPolicyError(error instanceof Error ? error.message : "Policy search failed");
+      setPolicyError(
+        error instanceof Error ? error.message : "Policy search failed",
+      );
     }
   };
 
@@ -435,7 +561,9 @@ export function useClariFiApp() {
 
   const toggleCoverage = (id: string) => {
     setSelectedCoverageIds((current) => {
-      const next = current.includes(id) ? current.filter((item) => item !== id) : [...current, id];
+      const next = current.includes(id)
+        ? current.filter((item) => item !== id)
+        : [...current, id];
       writeStoredIds(storageKeys.coverageIds, next);
       void savePatch({ selectedCoverageIds: next });
       return next;
@@ -444,7 +572,9 @@ export function useClariFiApp() {
 
   const toggleDecision = (id: string) => {
     setSelectedDecisionIds((current) => {
-      const next = current.includes(id) ? current.filter((item) => item !== id) : [...current, id];
+      const next = current.includes(id)
+        ? current.filter((item) => item !== id)
+        : [...current, id];
       writeStoredIds(storageKeys.decisionIds, next);
       void savePatch({ selectedDecisionIds: next });
       return next;
@@ -462,7 +592,15 @@ export function useClariFiApp() {
   return {
     view,
     setView,
-    auth: { ready: authReady, currentUser, demoAccounts, loading: authLoading, error: authError, login: handleLogin, logout: handleLogout },
+    auth: {
+      ready: authReady,
+      currentUser,
+      demoAccounts,
+      loading: authLoading,
+      error: authError,
+      login: handleLogin,
+      logout: handleLogout,
+    },
     sync: {
       session: activeSession,
       sessions: sessionList,
@@ -476,7 +614,7 @@ export function useClariFiApp() {
       refresh: refreshSessions,
       select: selectSession,
       create: createNewSession,
-      join: joinExistingSession
+      join: joinExistingSession,
     },
     settings: {
       model,
@@ -484,7 +622,7 @@ export function useClariFiApp() {
       isOpen: showSettings,
       open: () => setShowSettings(true),
       close: () => setShowSettings(false),
-      save: saveSettings
+      save: saveSettings,
     },
     client: {
       messages: clientMessages,
@@ -502,7 +640,7 @@ export function useClariFiApp() {
       updateHandwrittenNoteImage,
       decisionOptions,
       selectedDecisionIds,
-      policyEvidence
+      policyEvidence,
     },
     advisor: {
       messages: advisorMessages,
@@ -528,7 +666,14 @@ export function useClariFiApp() {
       policyUploading,
       policyError,
       uploadPolicy: updatePolicyFile,
-      searchPolicy
-    }
+      searchPolicy,
+      clientNotes,
+      updateClientNotes,
+      sessionTranscript,
+      updateSessionTranscript,
+      handwrittenNoteImage,
+      updateHandwrittenNoteImage,
+      learningPoints,
+    },
   };
 }

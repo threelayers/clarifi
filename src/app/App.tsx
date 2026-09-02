@@ -56,7 +56,9 @@ export function App() {
           sessionTranscript={clarifi.client.sessionTranscript}
           onSessionTranscriptChange={clarifi.client.updateSessionTranscript}
           handwrittenNoteImage={clarifi.client.handwrittenNoteImage}
-          onHandwrittenNoteImageChange={clarifi.client.updateHandwrittenNoteImage}
+          onHandwrittenNoteImageChange={
+            clarifi.client.updateHandwrittenNoteImage
+          }
           decisionOptions={clarifi.client.decisionOptions}
           selectedDecisionIds={clarifi.client.selectedDecisionIds}
           policyEvidence={clarifi.client.policyEvidence}
@@ -72,10 +74,6 @@ export function App() {
           recapApproved={clarifi.advisor.recapApproved}
           onGenerateRecap={clarifi.advisor.generateRecap}
           onApproveRecap={clarifi.advisor.approveRecap}
-          preMeetingPrep={clarifi.advisor.preMeetingPrep}
-          preMeetingLoading={clarifi.advisor.preMeetingLoading}
-          onGeneratePreMeeting={clarifi.advisor.generatePreMeeting}
-          myInfoSections={clarifi.advisor.myInfoSections}
           coverageItems={clarifi.advisor.coverageItems}
           selectedCoverageIds={clarifi.advisor.selectedCoverageIds}
           onToggleCoverage={clarifi.advisor.toggleCoverage}
@@ -88,6 +86,15 @@ export function App() {
           policyError={clarifi.advisor.policyError}
           onPolicyFile={clarifi.advisor.uploadPolicy}
           onPolicySearch={clarifi.advisor.searchPolicy}
+          clientNotes={clarifi.advisor.clientNotes}
+          onClientNotesChange={clarifi.advisor.updateClientNotes}
+          sessionTranscript={clarifi.advisor.sessionTranscript}
+          onSessionTranscriptChange={clarifi.advisor.updateSessionTranscript}
+          handwrittenNoteImage={clarifi.advisor.handwrittenNoteImage}
+          onHandwrittenNoteImageChange={
+            clarifi.advisor.updateHandwrittenNoteImage
+          }
+          learningPoints={clarifi.advisor.learningPoints}
           sessionId={clarifi.sync.session?.id || ""}
         />
       )}
