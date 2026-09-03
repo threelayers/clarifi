@@ -36,6 +36,7 @@ import type {
   Recap,
   Understanding,
 } from "@/types/clarifi";
+import { AdvisorDashboard as ClientIntelligenceDashboard } from "./AdvisorDashboard";
 import { AdvisorSessionCapture } from "./AdvisorSessionCapture";
 
 type Props = {
@@ -173,7 +174,7 @@ export function AdvisorView(props: Props) {
         </div>
         {tab === "dashboard" ? (
           <div className="min-h-0 flex-1 overflow-y-auto p-5 lg:p-7">
-            <AdvisorDashboard {...props} />
+            <ClientIntelligenceDashboard {...props} />
           </div>
         ) : tab === "capture" ? (
           <div className="min-h-0 flex-1 overflow-y-auto p-5">
@@ -293,182 +294,6 @@ function TabButton({
       {icon}
       {label}
     </button>
-  );
-}
-
-function AdvisorDashboard(props: Props) {
-  const selected = props.selectedCoverageIds.length;
-  const total = props.coverageItems.length;
-  const resolved = props.learningPoints.filter(
-    (item) => item.status === "covered",
-  ).length;
-  const open =
-    props.learningPoints.filter((item) => item.status !== "covered").length +
-    props.coverageItems.filter(
-      (item) =>
-        item.tone !== "green" && !props.selectedCoverageIds.includes(item.id),
-    ).length;
-  const percent = Math.round((selected / Math.max(total, 1)) * 100);
-  return (
-    <div className="mx-auto max-w-5xl">
-      <div className="mb-6">
-        <div className="text-xs font-semibold text-sci">
-          Current consultation
-        </div>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight">
-          Session overview
-        </h1>
-        <p className="mt-1 text-sm text-[#667085]">
-          A consolidated view of understanding, discussion coverage and client
-          context.
-        </p>
-      </div>
-      <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Metric
-          label="Coverage progress"
-          value={`${selected}/${total}`}
-          note={`${percent}% discussed`}
-          tone="blue"
-        />
-        <Metric
-          label="Understood clearly"
-          value={String(resolved)}
-          note="Confirmed learning points"
-          tone="green"
-        />
-        <Metric
-          label="Needs attention"
-          value={String(open)}
-          note="Clarifications and gaps"
-          tone="amber"
-        />
-        <Metric
-          label="Decision paths"
-          value={String(props.selectedDecisionIds.length)}
-          note="Shared with client"
-          tone="purple"
-        />
-      </div>
-      <div className="grid gap-5 xl:grid-cols-[1.15fr_.85fr]">
-        <section className="rounded-lg border border-[#DCE4EA] bg-white p-5">
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <h2 className="font-semibold">Understanding record</h2>
-              <p className="mt-1 text-xs text-[#667085]">
-                Learning points and unresolved coverage signals.
-              </p>
-            </div>
-            <span className="text-xs font-semibold text-[#667085]">
-              {props.learningPoints.length || total} signals
-            </span>
-          </div>
-          <UnderstandingRows
-            learningPoints={props.learningPoints}
-            coverageItems={props.coverageItems}
-            selectedIds={props.selectedCoverageIds}
-          />
-        </section>
-        <div className="space-y-5">
-          <section className="rounded-lg border border-[#DCE4EA] bg-white p-5">
-            <h2 className="font-semibold">Client context</h2>
-            <div className="mt-4 flex items-center gap-4">
-              <div
-                className="relative flex h-24 w-24 shrink-0 items-center justify-center rounded-full"
-                style={{
-                  background: `conic-gradient(#007AFF ${percent}%, #E8EDF1 0)`,
-                }}
-              >
-                <div className="flex h-[72px] w-[72px] items-center justify-center rounded-full bg-white text-lg font-semibold">
-                  {percent}%
-                </div>
-              </div>
-              <div>
-                <div className="text-sm font-semibold">Discussion coverage</div>
-                <p className="mt-1 text-xs leading-5 text-[#667085]">
-                  {selected === total
-                    ? "All planned topics are marked covered."
-                    : `${total - selected} planned topics still need confirmation.`}
-                </p>
-              </div>
-            </div>
-            <div className="mt-4 grid grid-cols-2 gap-2">
-              {[
-                "Variable income",
-                "First policy review",
-                "Hospital bill clarity",
-                "Plain language",
-              ].map((item) => (
-                <div
-                  key={item}
-                  className="rounded-md bg-[#F4F7F9] px-3 py-2 text-xs font-semibold text-[#475467]"
-                >
-                  {item}
-                </div>
-              ))}
-            </div>
-          </section>
-          <section className="rounded-lg border border-[#DCE4EA] bg-white p-5">
-            <h2 className="font-semibold">Session inputs</h2>
-            <div className="mt-3 grid grid-cols-2 gap-3">
-              <InputSignal
-                label="Transcript"
-                ready={Boolean(props.sessionTranscript.trim())}
-              />
-              <InputSignal
-                label="Client notes"
-                ready={Boolean(
-                  props.clientNotes.trim() || props.handwrittenNoteImage,
-                )}
-              />
-              <InputSignal
-                label="Policy evidence"
-                ready={props.policyEvidence.length > 0}
-              />
-              <InputSignal label="Recap" ready={Boolean(props.recap)} />
-            </div>
-          </section>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Metric({
-  label,
-  value,
-  note,
-  tone,
-}: {
-  label: string;
-  value: string;
-  note: string;
-  tone: "blue" | "green" | "amber" | "purple";
-}) {
-  const colors = {
-    blue: "border-l-[#007AFF]",
-    green: "border-l-[#248A3D]",
-    amber: "border-l-[#C77700]",
-    purple: "border-l-[#7C3AED]",
-  };
-  return (
-    <div
-      className={`rounded-lg border border-[#DCE4EA] border-l-4 bg-white p-4 ${colors[tone]}`}
-    >
-      <div className="text-xs font-semibold text-[#667085]">{label}</div>
-      <div className="mt-1 text-2xl font-semibold tracking-tight">{value}</div>
-      <div className="mt-1 text-[11px] text-[#667085]">{note}</div>
-    </div>
-  );
-}
-
-function InputSignal({ label, ready }: { label: string; ready: boolean }) {
-  return (
-    <div className="flex items-center gap-2 rounded-md bg-[#F4F7F9] px-3 py-2 text-xs font-semibold">
-      <span
-        className={`h-2 w-2 rounded-full ${ready ? "bg-[#248A3D]" : "bg-[#C5CBD2]"}`}
-      />
-      {label}
-    </div>
   );
 }
 
