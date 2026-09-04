@@ -18,7 +18,7 @@ export const createDefaultSessionState = (): SessionState => ({
     {
       id: "advisor-welcome",
       role: "assistant",
-      text: "Private copilot for Li Wen. Ask for gaps, evidence, or what to clarify next. Human judgment stays with you.",
+      text: "Live copilot for Li Wen. I use the meeting transcript and notes to surface possible misunderstandings and help you drill into relevant policy evidence. Human judgment stays with you.",
       citations: [],
       createdAt: new Date(0).toISOString()
     }

@@ -2,20 +2,18 @@ import { CheckCircle2, Cloud, Database, LogOut, MessageSquareText, Settings, Use
 import type { AuthUser } from "@/types/clarifi";
 
 type HeaderProps = {
-  view: "client" | "advisor";
   hasApiKey: boolean;
   currentUser: AuthUser | null;
   syncStatus: "local" | "loading" | "saved" | "saving" | "error";
   persistenceMode: "postgres" | "memory";
   sessionTitle: string;
-  onViewChange: (view: "client" | "advisor") => void;
   onSettings: () => void;
   onLogout: () => void;
   onSession: () => void;
   onManageClients?: () => void;
 };
 
-export function Header({ view, hasApiKey, currentUser, syncStatus, persistenceMode, sessionTitle, onViewChange, onSettings, onLogout, onSession, onManageClients }: HeaderProps) {
+export function Header({ hasApiKey, currentUser, syncStatus, persistenceMode, sessionTitle, onSettings, onLogout, onSession, onManageClients }: HeaderProps) {
   return (
     <header className="flex h-16 shrink-0 items-center justify-between gap-4 border-b border-line bg-white/72 px-5 shadow-[0_10px_40px_rgba(0,0,0,.045)] backdrop-blur-2xl">
       <div className="flex min-w-[210px] items-center gap-3">
@@ -30,21 +28,14 @@ export function Header({ view, hasApiKey, currentUser, syncStatus, persistenceMo
         </div>
       </div>
 
-      <div className="flex rounded-lg border border-[#E5E5EA] bg-white/45 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,.65)] backdrop-blur-xl">
-        <button
-          className={`tab-button ${view === "client" ? "tab-active" : "tab-idle"}`}
-          onClick={() => onViewChange("client")}
-        >
-          Client view
-        </button>
-        {currentUser?.role === "advisor" && (
-          <button
-            className={`tab-button ${view === "advisor" ? "tab-active" : "tab-idle"}`}
-            onClick={() => onViewChange("advisor")}
-          >
-            Advisor view
-          </button>
-        )}
+      <div className="hidden min-w-0 flex-1 text-center md:block">
+        <div className="truncate text-sm font-semibold text-[#344054]">
+          {sessionTitle || "Advisor workspace"}
+        </div>
+        <div className="mt-0.5 flex items-center justify-center gap-1.5 text-[10px] text-[#667085]">
+          <span className="h-1.5 w-1.5 rounded-full bg-[#248A3D]" />
+          Consultation support in progress
+        </div>
       </div>
 
       <div className="flex min-w-[260px] items-center justify-end gap-3">

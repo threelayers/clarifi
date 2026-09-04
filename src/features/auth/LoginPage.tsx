@@ -20,28 +20,18 @@ const fallbackAccounts: DemoAccount[] = [
     role: "advisor",
     label: "Advisor demo",
     description: "Advisor dashboard, recap approval, decision menu, and evidence controls."
-  },
-  {
-    accountId: "client-demo",
-    id: "demo-client-liwen",
-    email: "client@clarifi.demo",
-    name: "Tan Li Wen",
-    role: "client",
-    label: "Client demo",
-    description: "Client copilot with notes, learning points, and decision preview."
   }
 ];
 
 const loginFeatures: Array<{ title: string; caption: string; Icon: LucideIcon }> = [
   { title: "Session capture", caption: "Speech and notes", Icon: ClipboardCheck },
-  { title: "Two surfaces", caption: "Client and advisor", Icon: Users },
-  { title: "Controlled access", caption: "Demo login ready", Icon: KeyRound }
+  { title: "Client portfolio", caption: "Multiple profiles", Icon: Users },
+  { title: "Advisor access", caption: "Role protected", Icon: KeyRound }
 ];
 
 export function LoginPage({ accounts, loading, error, onLogin }: LoginPageProps) {
   const availableAccounts = accounts.length ? accounts : fallbackAccounts;
   const advisorAccount = useMemo(() => availableAccounts.find((account) => account.role === "advisor") || availableAccounts[0], [availableAccounts]);
-  const clientAccount = useMemo(() => availableAccounts.find((account) => account.role === "client") || availableAccounts[1], [availableAccounts]);
   const [email, setEmail] = useState(advisorAccount?.email || "advisor@clarifi.demo");
   const [password, setPassword] = useState("clarifi-advisor");
 
@@ -52,7 +42,7 @@ export function LoginPage({ accounts, loading, error, onLogin }: LoginPageProps)
 
   const useAccount = (account: DemoAccount) => {
     setEmail(account.email);
-    setPassword(account.role === "advisor" ? "clarifi-advisor" : "clarifi-client");
+    setPassword("clarifi-advisor");
     onLogin({ accountId: account.accountId });
   };
 
@@ -86,7 +76,7 @@ export function LoginPage({ accounts, loading, error, onLogin }: LoginPageProps)
             </h1>
             <p className="login-clamp mt-4 max-w-[560px] text-base font-medium leading-7 text-[#6E6E73] sm:w-auto">
               <span className="block sm:inline">Use the demo workspace to review </span>
-              <span className="block sm:inline">the copilot, evidence, notes, and recap.</span>
+              <span className="block sm:inline">live conversations, evidence, notes, and decisions.</span>
             </p>
 
             <div className="login-clamp mt-7 grid max-w-[600px] gap-3 sm:w-auto sm:grid-cols-3">
@@ -117,7 +107,7 @@ export function LoginPage({ accounts, loading, error, onLogin }: LoginPageProps)
           <form onSubmit={submit} className="apple-panel login-clamp min-w-0 w-full p-6 lg:max-w-none">
             <div className="mb-5">
               <div className="text-2xl font-semibold tracking-tight">Sign in</div>
-              <div className="mt-1 text-sm font-medium text-[#6E6E73]">Use a demo account for judging.</div>
+              <div className="mt-1 text-sm font-medium text-[#6E6E73]">Sign in to the advisor workspace.</div>
             </div>
 
             <label className="mb-2 block text-[11px] font-bold uppercase tracking-wide text-[#6E6E73]">Email</label>
@@ -149,8 +139,8 @@ export function LoginPage({ accounts, loading, error, onLogin }: LoginPageProps)
 
             <div className="my-5 h-px bg-[#E5E5EA]" />
 
-            <div className="grid gap-2 sm:grid-cols-2">
-              {[advisorAccount, clientAccount].filter(Boolean).map((account) => (
+            <div className="grid gap-2">
+              {[advisorAccount].filter(Boolean).map((account) => (
                 <button
                   key={account.accountId}
                   type="button"

@@ -31,7 +31,9 @@ export const demoAccounts: DemoAccount[] = [
 ];
 
 export const publicDemoAccounts = () =>
-  demoAccounts.map(({ password: _password, ...account }) => account);
+  demoAccounts
+    .filter((account) => account.role === "advisor")
+    .map(({ password: _password, ...account }) => account);
 
 export const findDemoAccount = (accountIdOrEmail = "advisor-demo") =>
   demoAccounts.find((account) => account.accountId === accountIdOrEmail || account.email.toLowerCase() === accountIdOrEmail.toLowerCase());

@@ -19,7 +19,7 @@ export const initialAdvisorMessage: AdvisorMessage = {
   id: "advisor-welcome",
   role: "assistant",
   text:
-    "Private copilot for Li Wen. Ask for gaps, evidence, or what to clarify next. Human judgment stays with you.",
+    "Live copilot for Li Wen. I use the meeting transcript and notes to surface possible misunderstandings and help you drill into relevant policy evidence. Human judgment stays with you.",
   citations: []
 };
 

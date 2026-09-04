@@ -36,7 +36,6 @@ Production demo: `https://clarifi-mu.vercel.app/ClariFi.dc.html`
 | Account | Email | Password | Role |
 | --- | --- | --- | --- |
 | Advisor demo | `advisor@clarifi.demo` | `clarifi-advisor` | Advisor |
-| Client demo | `client@clarifi.demo` | `clarifi-client` | Client |
 
 The seeded demo session uses join code `LIWEN28`. One-click demo login remains available for judging.
 

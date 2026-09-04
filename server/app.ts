@@ -67,7 +67,7 @@ app.get("/api/health", asyncRoute(async (_req, res) => {
     redis: redisHealth,
     profile,
     clauses: clauses.length,
-    demoAccounts: 2,
+    demoAccounts: 1,
     allowedOrigins: allowedOrigins.size
   });
 }));

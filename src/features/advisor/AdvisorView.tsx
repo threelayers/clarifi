@@ -625,10 +625,10 @@ function Copilot({
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
         <div className="mx-auto max-w-[720px]">
           <div className="mb-6">
-            <h1 className="text-xl font-semibold">Private advisor copilot</h1>
+            <h1 className="text-xl font-semibold">Live consultation copilot</h1>
             <p className="mt-1 text-xs text-[#667085]">
-              Knowledge support only. Recommendations remain with the licensed
-              advisor.
+              Captures the conversation, spots possible misunderstandings and
+              grounds follow-up in relevant policy evidence.
             </p>
           </div>
           {messages.map((message) => (
