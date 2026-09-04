@@ -25,21 +25,17 @@ import { myInfoSections } from "@/domain/sessionData";
 import type {
   AdvisorMessage,
   CoverageItem,
-  PolicyEvidence,
-  Recap,
   Understanding,
 } from "@/types/clarifi";
 
 type AdvisorDashboardProps = {
   messages: AdvisorMessage[];
-  recap: Recap | null;
   coverageItems: CoverageItem[];
   selectedCoverageIds: string[];
   selectedDecisionIds: string[];
   clientNotes: string;
   sessionTranscript: string;
   handwrittenNoteImage: string;
-  policyEvidence: PolicyEvidence[];
   learningPoints: Understanding[];
 };
 
@@ -271,7 +267,7 @@ export function AdvisorDashboard(props: AdvisorDashboardProps) {
           coverageItems={props.coverageItems}
           selectedIds={props.selectedCoverageIds}
         />
-        <div className="space-y-5">
+        <div>
           <section className="rounded-lg border border-[#DCE4EA] bg-white p-5">
             <h2 className="font-semibold">Session progress</h2>
             <div className="mt-4 flex items-center gap-4">
@@ -298,26 +294,6 @@ export function AdvisorDashboard(props: AdvisorDashboardProps) {
               )}
               learningPointCount={props.learningPoints.length}
             />
-          </section>
-          <section className="rounded-lg border border-[#DCE4EA] bg-white p-5">
-            <h2 className="font-semibold">Session inputs</h2>
-            <div className="mt-3 grid grid-cols-2 gap-3">
-              <InputSignal
-                label="Transcript"
-                ready={Boolean(props.sessionTranscript.trim())}
-              />
-              <InputSignal
-                label="Client notes"
-                ready={Boolean(
-                  props.clientNotes.trim() || props.handwrittenNoteImage,
-                )}
-              />
-              <InputSignal
-                label="Policy evidence"
-                ready={props.policyEvidence.length > 0}
-              />
-              <InputSignal label="Recap" ready={Boolean(props.recap)} />
-            </div>
           </section>
         </div>
       </div>
@@ -982,17 +958,6 @@ function Signal({
     <div className={`rounded-md px-3 py-2 ${color}`}>
       <div className="text-lg font-bold">{value}</div>
       <div className="text-[10px] font-semibold">{label}</div>
-    </div>
-  );
-}
-
-function InputSignal({ label, ready }: { label: string; ready: boolean }) {
-  return (
-    <div className="flex items-center gap-2 rounded-md bg-[#F4F7F9] px-3 py-2 text-xs font-semibold">
-      <span
-        className={`h-2 w-2 rounded-full ${ready ? "bg-[#248A3D]" : "bg-[#C5CBD2]"}`}
-      />
-      {label}
     </div>
   );
 }
