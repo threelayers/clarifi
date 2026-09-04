@@ -178,11 +178,6 @@ export function AdvisorClientSelector({
                       <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#E8F3FA] text-sm font-bold text-sci">
                         {client.initials}
                       </div>
-                      {client.demoReady && (
-                        <span className="rounded-md bg-[#E7F4EA] px-2 py-1 text-[9px] font-bold uppercase text-[#187532]">
-                          Demo ready
-                        </span>
-                      )}
                     </div>
                     <div className="mt-3 text-sm font-semibold">
                       {client.name}
