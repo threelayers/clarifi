@@ -8,7 +8,11 @@ import {
   ChevronDown,
   HeartPulse,
   Home,
+  Info,
+  ListChecks,
   MessageSquareText,
+  Mic,
+  NotebookPen,
   ShieldCheck,
   Sparkles,
   Target,
@@ -155,9 +159,9 @@ export function AdvisorDashboard(props: AdvisorDashboardProps) {
   const understood = props.learningPoints.filter(
     (item) => item.status === "covered",
   ).length;
-  const attention = props.learningPoints.filter(
-    (item) => item.status !== "covered",
-  ).length;
+  const attention = props.learningPoints.length
+    ? props.learningPoints.filter((item) => item.status !== "covered").length
+    : total - selected;
   const needs = buildNeeds(sessionText);
   const suggestions = rankSuggestions(sessionText);
   const engagement = buildEngagementSeries(sessionText);
@@ -285,6 +289,15 @@ export function AdvisorDashboard(props: AdvisorDashboardProps) {
               <Signal label="Understood" value={understood} tone="green" />
               <Signal label="Needs attention" value={attention} tone="amber" />
             </div>
+            <ProgressSources
+              selected={selected}
+              total={total}
+              hasTranscript={Boolean(props.sessionTranscript.trim())}
+              hasNotes={Boolean(
+                props.clientNotes.trim() || props.handwrittenNoteImage,
+              )}
+              learningPointCount={props.learningPoints.length}
+            />
           </section>
           <section className="rounded-lg border border-[#DCE4EA] bg-white p-5">
             <h2 className="font-semibold">Session inputs</h2>
@@ -880,6 +893,74 @@ function Ring({ value }: { value: number }) {
       <div className="flex h-[60px] w-[60px] items-center justify-center rounded-full bg-white text-sm font-bold">
         {value}%
       </div>
+    </div>
+  );
+}
+
+function ProgressSources({
+  selected,
+  total,
+  hasTranscript,
+  hasNotes,
+  learningPointCount,
+}: {
+  selected: number;
+  total: number;
+  hasTranscript: boolean;
+  hasNotes: boolean;
+  learningPointCount: number;
+}) {
+  return (
+    <div className="mt-4 rounded-lg border border-[#D9E4EC] bg-[#F6F9FB] p-3">
+      <div className="flex items-center gap-2 text-[10px] font-bold uppercase text-[#475467]">
+        <Info size={13} className="text-sci" /> Sources & calculation
+      </div>
+      <div className="mt-3 space-y-2">
+        <SourceRow
+          icon={ListChecks}
+          label="Advisor checklist"
+          value={`${selected} of ${total} planned topics marked`}
+        />
+        <SourceRow
+          icon={Mic}
+          label="Session transcript"
+          value={hasTranscript ? "Available" : "No transcript captured"}
+        />
+        <SourceRow
+          icon={NotebookPen}
+          label="Client notes"
+          value={hasNotes ? "Available" : "No notes captured"}
+        />
+        <SourceRow
+          icon={Sparkles}
+          label="ClariFi learning points"
+          value={`${learningPointCount} extracted signals`}
+        />
+      </div>
+      <p className="mt-3 border-t border-[#D9E4EC] pt-2 text-[10px] leading-4 text-[#667085]">
+        Discussion coverage = checklist topics marked ÷ {total}. Understanding
+        counts come from learning points extracted from the transcript and
+        notes. When none exist, unresolved checklist topics are shown as needing
+        attention.
+      </p>
+    </div>
+  );
+}
+
+function SourceRow({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="grid grid-cols-[18px_1fr_auto] items-center gap-2 text-[10px]">
+      <Icon size={13} className="text-[#667085]" />
+      <span className="font-semibold text-[#344054]">{label}</span>
+      <span className="text-right font-medium text-[#667085]">{value}</span>
     </div>
   );
 }
