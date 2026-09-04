@@ -1,6 +1,4 @@
 import {
-  Activity,
-  Banknote,
   Brain,
   BriefcaseBusiness,
   Check,
@@ -23,6 +21,7 @@ import {
 import type { ReactNode, RefObject } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { clauses, profile } from "@/domain/policy";
+import { ClientAvatar } from "@/shared/components/ClientAvatar";
 import { ClariFiAiMark } from "@/shared/components/ClariFiAiMark";
 import { LoadingDots } from "@/shared/components/Header";
 import { compactText } from "@/shared/lib/text";
@@ -37,6 +36,7 @@ import type {
 } from "@/types/clarifi";
 import { AdvisorDashboard as ClientIntelligenceDashboard } from "./AdvisorDashboard";
 import { AdvisorSessionCapture } from "./AdvisorSessionCapture";
+import { dashboardCategories } from "./dashboardData";
 
 const ADVISOR_RAIL_WIDTH_KEY = "clarifi.advisorSessionRailWidth";
 const ADVISOR_RAIL_MIN_WIDTH = 300;
@@ -100,8 +100,9 @@ type Props = {
 
 export function AdvisorView(props: Props) {
   const [tab, setTab] = useState<"dashboard" | "capture" | "copilot">(
-    "copilot",
+    "dashboard",
   );
+  const [actionsOpen, setActionsOpen] = useState(false);
   const [input, setInput] = useState("");
   const [policyQuery, setPolicyQuery] = useState("income hospital");
   const [railWidth, setRailWidth] = useState(savedAdvisorRailWidth);
@@ -158,6 +159,15 @@ export function AdvisorView(props: Props) {
     };
   }, [isResizingRail]);
 
+  useEffect(() => {
+    if (!actionsOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setActionsOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [actionsOpen]);
+
   const persistRailWidth = (width: number) => {
     const nextWidth = clampAdvisorRailWidth(width);
     railWidthRef.current = nextWidth;
@@ -183,9 +193,12 @@ export function AdvisorView(props: Props) {
           <aside className="flex h-full w-full flex-col border-r border-[#DCE4EA] bg-[#EAF0F4]">
             <div className="border-b border-[#DCE4EA] px-5 py-4">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-sci text-sm font-bold text-white">
-                  TL
-                </div>
+                <ClientAvatar
+                  src="/avatars/tan-li-wen.png"
+                  name={profile.name}
+                  initials="TL"
+                  sizeClassName="h-11 w-11"
+                />
                 <div className="min-w-0">
                   <div className="truncate text-sm font-semibold">
                     {profile.name}
@@ -272,7 +285,10 @@ export function AdvisorView(props: Props) {
           <div className="flex rounded-lg bg-[#EEF1F4] p-1">
             <TabButton
               active={tab === "dashboard"}
-              onClick={() => setTab("dashboard")}
+              onClick={() => {
+                setTab("dashboard");
+                setActionsOpen(false);
+              }}
               icon={<LayoutDashboard size={15} />}
               label="Dashboard"
             />
@@ -290,6 +306,15 @@ export function AdvisorView(props: Props) {
               icon={<MessageSquare size={15} />}
               label="Workspace"
             />
+            {tab !== "dashboard" && (
+              <button
+                type="button"
+                onClick={() => setActionsOpen(true)}
+                className="ml-1 flex min-h-11 items-center gap-1.5 rounded-md px-3 text-xs font-semibold text-[#667085] lg:hidden"
+              >
+                <CheckCircle2 size={15} /> Actions
+              </button>
+            )}
           </div>
           <div className="ml-auto hidden items-center gap-2 text-xs font-semibold text-[#667085] sm:flex">
             <span className="h-2 w-2 rounded-full bg-[#248A3D]" /> Live session
@@ -376,6 +401,81 @@ export function AdvisorView(props: Props) {
           </div>
         </aside>
       )}
+
+      {tab !== "dashboard" && actionsOpen && (
+        <MobileSessionActions
+          {...props}
+          selectedDecisions={selectedDecisions}
+          onClose={() => setActionsOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+function MobileSessionActions({
+  selectedDecisions,
+  onClose,
+  ...props
+}: Props & {
+  selectedDecisions: DecisionOption[];
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 lg:hidden" role="presentation">
+      <button
+        type="button"
+        aria-label="Close session actions"
+        onClick={onClose}
+        className="absolute inset-0 bg-[#102A43]/35"
+      />
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="mobile-session-actions-title"
+        className="absolute inset-x-0 bottom-0 max-h-[88vh] overflow-y-auto rounded-t-2xl border-t border-[#DCE4EA] bg-white p-4 pb-6 shadow-[0_-18px_50px_rgba(16,42,67,.18)]"
+      >
+        <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-[#C9D3DC]" />
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div>
+            <h2
+              id="mobile-session-actions-title"
+              className="text-base font-semibold"
+            >
+              Session actions
+            </h2>
+            <p className="mt-1 text-xs text-[#667085]">
+              Coverage, choices and final recap.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-11 w-11 items-center justify-center rounded-lg border border-[#DCE4EA] text-lg text-[#667085]"
+            aria-label="Close session actions"
+          >
+            ×
+          </button>
+        </div>
+        <CoverageChecklist
+          items={props.coverageItems}
+          selectedIds={props.selectedCoverageIds}
+          onToggle={props.onToggleCoverage}
+        />
+        <DecisionMenu
+          options={props.decisionOptions}
+          selectedIds={props.selectedDecisionIds}
+          selectedOptions={selectedDecisions}
+          onToggle={props.onToggleDecision}
+        />
+        <RecapActions
+          recap={props.recap}
+          loading={props.recapLoading}
+          approved={props.recapApproved}
+          onGenerate={props.onGenerateRecap}
+          onApprove={props.onApproveRecap}
+        />
+      </section>
     </div>
   );
 }
@@ -494,13 +594,28 @@ function CoverageChecklist({
   selectedIds: string[];
   onToggle: (id: string) => void;
 }) {
-  const icons: Record<string, typeof HeartPulse> = {
-    "hospital-bills": HeartPulse,
-    "income-risk": Banknote,
-    "critical-illness": Activity,
-    "outpatient-mental-health": Brain,
-    "pre-existing": History,
-    affordability: WalletCards,
+  const categoryStyles: Record<
+    string,
+    { icon: typeof HeartPulse; color: string; softColor: string }
+  > = {
+    "hospital-bills": dashboardCategories.find((item) => item.id === "shield")!,
+    "income-risk": dashboardCategories.find((item) => item.id === "life")!,
+    "critical-illness": dashboardCategories.find((item) => item.id === "critical")!,
+    "outpatient-mental-health": {
+      icon: Brain,
+      color: "#0891B2",
+      softColor: "#ECFEFF",
+    },
+    "pre-existing": {
+      icon: History,
+      color: "#64748B",
+      softColor: "#F1F5F9",
+    },
+    affordability: {
+      icon: WalletCards,
+      color: "#C026D3",
+      softColor: "#FDF4FF",
+    },
   };
   return (
     <section className="mb-5">
@@ -514,7 +629,12 @@ function CoverageChecklist({
       </div>
       <div className="grid grid-cols-2 gap-2">
         {items.map((item) => {
-          const Icon = icons[item.id] || CheckCircle2;
+          const style = categoryStyles[item.id] || {
+            icon: CheckCircle2,
+            color: "#667085",
+            softColor: "#F0F3F6",
+          };
+          const Icon = style.icon;
           const active = selectedIds.includes(item.id);
           return (
             <button
@@ -524,10 +644,15 @@ function CoverageChecklist({
               className={`group min-h-[88px] rounded-lg border p-3 text-left transition ${active ? "border-[#9CCDFD] bg-[#EEF7FF]" : "border-[#DCE4EA] bg-[#F8FAFB] hover:bg-white"}`}
             >
               <div className="flex items-start justify-between">
-                <Icon
-                  size={18}
-                  className={active ? "text-sci" : "text-[#667085]"}
-                />
+                <div
+                  className="flex h-8 w-8 items-center justify-center rounded-md"
+                  style={{
+                    backgroundColor: style.softColor,
+                    color: active ? style.color : "#667085",
+                  }}
+                >
+                  <Icon size={18} />
+                </div>
                 <span
                   className={`flex h-5 w-5 items-center justify-center rounded-full border ${active ? "border-sci bg-sci text-white" : "border-[#C5CBD2]"}`}
                 >

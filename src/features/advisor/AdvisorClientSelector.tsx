@@ -10,10 +10,12 @@ import {
   Users,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { ClientAvatar } from "@/shared/components/ClientAvatar";
 
 type ClientProfile = {
   id: string;
   initials: string;
+  avatarSrc: string;
   name: string;
   detail: string;
   focus: string;
@@ -27,6 +29,7 @@ const clients: ClientProfile[] = [
   {
     id: "tan-li-wen",
     initials: "TL",
+    avatarSrc: "/avatars/tan-li-wen.png",
     name: "Tan Li Wen",
     detail: "28 · Freelance designer",
     focus: "Hospitalisation clarity",
@@ -38,6 +41,7 @@ const clients: ClientProfile[] = [
   {
     id: "marcus-lim",
     initials: "ML",
+    avatarSrc: "/avatars/marcus-lim.png",
     name: "Marcus Lim",
     detail: "34 · Operations manager",
     focus: "Life protection review",
@@ -48,6 +52,7 @@ const clients: ClientProfile[] = [
   {
     id: "aisha-rahman",
     initials: "AR",
+    avatarSrc: "/avatars/aisha-rahman.png",
     name: "Aisha Rahman",
     detail: "31 · Product specialist",
     focus: "Family protection planning",
@@ -58,6 +63,7 @@ const clients: ClientProfile[] = [
   {
     id: "priya-nair",
     initials: "PN",
+    avatarSrc: "/avatars/priya-nair.png",
     name: "Priya Nair",
     detail: "29 · Healthcare analyst",
     focus: "Critical illness clarity",
@@ -175,9 +181,12 @@ export function AdvisorClientSelector({
                     }`}
                   >
                     <div className="flex items-start justify-between gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#E8F3FA] text-sm font-bold text-sci">
-                        {client.initials}
-                      </div>
+                      <ClientAvatar
+                        src={client.avatarSrc}
+                        name={client.name}
+                        initials={client.initials}
+                        sizeClassName="h-12 w-12"
+                      />
                     </div>
                     <div className="mt-3 text-sm font-semibold">
                       {client.name}
@@ -206,9 +215,12 @@ export function AdvisorClientSelector({
 
           <aside className="self-start rounded-lg border border-[#D4DEE6] bg-white p-5 shadow-sm lg:sticky lg:top-6">
             <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-sci text-sm font-bold text-white">
-                {selected.initials}
-              </div>
+              <ClientAvatar
+                src={selected.avatarSrc}
+                name={selected.name}
+                initials={selected.initials}
+                sizeClassName="h-14 w-14"
+              />
               <div>
                 <h2 className="font-semibold">{selected.name}</h2>
                 <p className="mt-0.5 text-xs text-[#667085]">

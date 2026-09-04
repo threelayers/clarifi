@@ -189,11 +189,12 @@ export function buildUnderstandingSummary(
   const entries = Object.entries(metrics) as Array<
     [DashboardCategoryId, NonNullable<SummaryMetrics[DashboardCategoryId]>]
   >;
-  const understood = entries
+  const discussedEntries = entries.filter(([, value]) => value.understanding > 0);
+  const understood = discussedEntries
     .filter(([, value]) => value.understanding >= 75)
     .sort(([, a], [, b]) => b.understanding - a.understanding)[0];
-  const needsWork = entries
-    .filter(([, value]) => value.understanding < 75)
+  const needsWork = discussedEntries
+    .filter(([, value]) => value.understanding > 0 && value.understanding < 75)
     .sort(([, a], [, b]) => a.understanding - b.understanding)[0];
 
   if (understood && needsWork) {

@@ -1,17 +1,20 @@
 import {
-  ArrowRight,
+  AlertTriangle,
+  ArrowDownRight,
+  ArrowUpRight,
   Baby,
   Banknote,
   BriefcaseBusiness,
   CalendarClock,
   CheckCircle2,
   ChevronDown,
+  Clock3,
   Download,
   HeartPulse,
   Home,
   Info,
   ListChecks,
-  MessageSquareText,
+  Minus,
   Mic,
   NotebookPen,
   ShieldCheck,
@@ -22,9 +25,10 @@ import {
   WandSparkles,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { myInfoSections } from "@/domain/sessionData";
 import { refineProductSuggestions } from "@/services/clarifiApi";
+import { ClientAvatar } from "@/shared/components/ClientAvatar";
 import type {
   AdvisorMessage,
   CoverageItem,
@@ -33,6 +37,24 @@ import type {
   Understanding,
 } from "@/types/clarifi";
 import { exportAdvisorReport } from "./exportAdvisorReport";
+import {
+  buildUnderstandingSummary,
+  coverageDelta,
+  coverageThreshold,
+  dashboardCategories,
+  dashboardCategoryIds,
+  getDashboardSnapshot,
+  latestDashboardSnapshot,
+  selectCheckpoint,
+  sortCategoryIdsByUnmetNeed,
+} from "./dashboardData";
+import type {
+  CategoryMetrics,
+  DashboardCategory,
+  DashboardCategoryId,
+  DashboardCheckpoint,
+  DashboardSessionSnapshot,
+} from "./dashboardData";
 
 type AdvisorDashboardProps = {
   messages: AdvisorMessage[];
@@ -46,88 +68,7 @@ type AdvisorDashboardProps = {
   learningPoints: Understanding[];
 };
 
-type Category = {
-  id: string;
-  label: string;
-  shortLabel: string;
-  icon: LucideIcon;
-  keywords: string[];
-  need: number;
-  coverage: number;
-  understanding: number;
-};
-
-const categories: Category[] = [
-  {
-    id: "life",
-    label: "Life insurance",
-    shortLabel: "Life",
-    icon: UserRound,
-    keywords: [
-      "life insurance",
-      "dependant",
-      "dependent",
-      "family protection",
-      "death benefit",
-    ],
-    need: 48,
-    coverage: 0,
-    understanding: 42,
-  },
-  {
-    id: "investment",
-    label: "Investment-linked policy",
-    shortLabel: "Investment-linked",
-    icon: TrendingUp,
-    keywords: ["investment", "investment-linked", "ilp", "fund", "returns"],
-    need: 34,
-    coverage: 0,
-    understanding: 31,
-  },
-  {
-    id: "critical",
-    label: "Critical illness",
-    shortLabel: "Critical illness",
-    icon: HeartPulse,
-    keywords: [
-      "critical illness",
-      "lump-sum",
-      "lump sum",
-      "serious illness",
-      "rider",
-    ],
-    need: 76,
-    coverage: 0,
-    understanding: 54,
-  },
-  {
-    id: "shield",
-    label: "Integrated Shield Plan",
-    shortLabel: "Shield plan",
-    icon: ShieldCheck,
-    keywords: [
-      "hospital",
-      "hospitalisation",
-      "shield",
-      "medishield",
-      "ward",
-      "surgery",
-    ],
-    need: 88,
-    coverage: 72,
-    understanding: 74,
-  },
-  {
-    id: "retirement",
-    label: "Retirement plan",
-    shortLabel: "Retirement",
-    icon: CalendarClock,
-    keywords: ["retirement", "retire", "later life", "annuity", "pension"],
-    need: 42,
-    coverage: 0,
-    understanding: 26,
-  },
-];
+type Category = DashboardCategory & CategoryMetrics;
 
 const profileIcons: Record<string, LucideIcon> = {
   Name: UserRound,
@@ -142,11 +83,31 @@ const profileFields = myInfoSections
   .filter((field) => profileIcons[field.label])
   .slice(0, 5);
 
+const categoryLookup = dashboardCategories.reduce(
+  (result, category) => {
+    result[category.id] = category;
+    return result;
+  },
+  {} as Record<DashboardCategoryId, DashboardCategory>,
+);
+
+const selectedClient = {
+  name: "Tan Li Wen",
+  initials: "TL",
+  avatarSrc: "/avatars/tan-li-wen.png",
+};
+
 export function AdvisorDashboard(props: AdvisorDashboardProps) {
   const [dashboardTab, setDashboardTab] = useState<
     "profile" | "engagement" | "products"
   >("profile");
   const [isExporting, setIsExporting] = useState(false);
+  const [sessionNumber, setSessionNumber] = useState(
+    latestDashboardSnapshot.sessionNumber,
+  );
+  const [durationMinutes, setDurationMinutes] = useState(
+    latestDashboardSnapshot.durationMinutes,
+  );
   const sessionText = [
     props.sessionTranscript,
     props.clientNotes,
@@ -155,10 +116,26 @@ export function AdvisorDashboard(props: AdvisorDashboardProps) {
   ]
     .join(" ")
     .toLowerCase();
+  const snapshot = getDashboardSnapshot(sessionNumber);
+  const duration = Math.min(durationMinutes, snapshot.durationMinutes);
+  const checkpoint = selectCheckpoint(snapshot, duration);
+  const categories = useMemo(
+    () =>
+      dashboardCategories.map((category) => ({
+        ...category,
+        ...checkpoint.categories[category.id],
+      })),
+    [checkpoint],
+  );
+  const orderedCategories = useMemo(() => {
+    const ids = sortCategoryIdsByUnmetNeed(
+      dashboardCategoryIds,
+      checkpoint.categories,
+    );
+    return ids.map((id) => categories.find((category) => category.id === id)!);
+  }, [categories, checkpoint.categories]);
   const engagedCategories = categories.filter(
-    (category) =>
-      category.id === "shield" ||
-      category.keywords.some((keyword) => sessionText.includes(keyword)),
+    (category) => category.understanding > 0 || category.id === "shield",
   );
   const selected = props.selectedCoverageIds.length;
   const total = props.coverageItems.length;
@@ -170,8 +147,9 @@ export function AdvisorDashboard(props: AdvisorDashboardProps) {
     ? props.learningPoints.filter((item) => item.status !== "covered").length
     : total - selected;
   const needs = buildNeeds(sessionText);
-  const suggestions = rankSuggestions(sessionText);
-  const engagement = buildEngagementSeries(sessionText);
+  const engagement = snapshot.checkpoints.filter(
+    (item) => item.durationMinutes <= duration,
+  );
 
   const handleExport = async () => {
     setIsExporting(true);
@@ -181,7 +159,7 @@ export function AdvisorDashboard(props: AdvisorDashboardProps) {
         selectedCoverageIds: props.selectedCoverageIds,
         decisionOptions: props.decisionOptions,
         selectedDecisionIds: props.selectedDecisionIds,
-        coverageProfile: categories.map(({ label, coverage }) => ({
+        coverageProfile: orderedCategories.map(({ label, coverage }) => ({
           label,
           coverage,
         })),
@@ -239,7 +217,7 @@ export function AdvisorDashboard(props: AdvisorDashboardProps) {
       </nav>
 
       {dashboardTab === "profile" && (
-        <ProfileDashboard categories={categories} />
+        <ProfileDashboard items={orderedCategories} snapshot={snapshot} />
       )}
 
       {dashboardTab === "engagement" && (
@@ -252,15 +230,32 @@ export function AdvisorDashboard(props: AdvisorDashboardProps) {
           total={total}
           understood={understood}
           attention={attention}
+          categories={orderedCategories}
+          snapshot={snapshot}
+          checkpoint={checkpoint}
+          sessionNumber={sessionNumber}
+          durationMinutes={duration}
+          onSessionNumberChange={(value) => {
+            const nextSnapshot = getDashboardSnapshot(value);
+            setSessionNumber(nextSnapshot.sessionNumber);
+            setDurationMinutes((current) =>
+              Math.max(
+                nextSnapshot.checkpoints[0].durationMinutes,
+                Math.min(current, nextSnapshot.durationMinutes),
+              ),
+            );
+          }}
+          onDurationChange={setDurationMinutes}
           {...props}
         />
       )}
 
       {dashboardTab === "products" && (
         <ProductSuggestionsDashboard
-          suggestions={suggestions}
+          suggestions={orderedCategories}
           clientNotes={props.clientNotes}
           sessionTranscript={props.sessionTranscript}
+          timestamp={snapshot.timestamp}
         />
       )}
     </div>
@@ -294,53 +289,109 @@ function DashboardTab({
   );
 }
 
-function ProfileDashboard({ categories: items }: { categories: Category[] }) {
+function ProfileDashboard({
+  items,
+  snapshot,
+}: {
+  items: Category[];
+  snapshot: DashboardSessionSnapshot;
+}) {
+  const identityFields = profileFields.filter((field) =>
+    ["Name", "Age", "Residential status"].includes(field.label),
+  );
+  const financialFields = profileFields.filter((field) =>
+    ["Employment", "Income pattern"].includes(field.label),
+  );
+
   return (
-    <div className="grid gap-5 xl:grid-cols-[340px_1fr]">
-      <section className="rounded-lg border border-[#DCE4EA] bg-white p-5">
-        <div className="flex items-center gap-3 border-b border-[#E5EAF0] pb-4">
-          <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-[#E8F3FA] text-lg font-bold text-sci">
-            TL
-          </div>
-          <div>
-            <h2 className="font-semibold">Tan Li Wen</h2>
+    <div className="grid gap-5 xl:grid-cols-[380px_1fr]">
+      <section className="rounded-lg border border-[#DCE4EA] bg-white p-5 shadow-[0_8px_28px_rgba(30,64,96,.04)]">
+        <div className="flex items-start gap-3 border-b border-[#E5EAF0] pb-4">
+          <ClientAvatar
+            src={selectedClient.avatarSrc}
+            name={selectedClient.name}
+            initials={selectedClient.initials}
+            sizeClassName="h-16 w-16"
+            textClassName="text-lg"
+          />
+          <div className="min-w-0 flex-1">
+            <h2 className="text-base font-semibold">{selectedClient.name}</h2>
             <p className="mt-0.5 text-xs text-[#667085]">Individual profile</p>
+            <DataTimestamp timestamp={snapshot.timestamp} className="mt-2" />
+          </div>
+          <div className="shrink-0 rounded-lg border border-[#CFE2F3] bg-[#F3F9FF] px-3 py-2 text-right">
+            <div className="text-2xl font-bold leading-none text-[#102A43]">
+              {snapshot.sessionNumber}
+            </div>
+            <div className="mt-1 text-[9px] font-bold uppercase tracking-wide text-sci">
+              Sessions
+            </div>
+            <div className="mt-0.5 whitespace-nowrap text-[9px] text-[#667085]">
+              Since Mar 2026
+            </div>
           </div>
         </div>
-        <div className="mt-2 divide-y divide-[#E5EAF0]">
-          {profileFields.map((field) => {
-            const Icon = profileIcons[field.label];
-            return (
-              <div key={field.label} className="flex items-center gap-3 py-3">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[#F0F5F8] text-sci">
-                  <Icon size={16} />
-                </div>
-                <div className="min-w-0">
-                  <div className="text-[10px] font-semibold uppercase text-[#667085]">
-                    {field.label}
-                  </div>
-                  <div className="mt-0.5 truncate text-xs font-semibold text-[#1D2939]">
-                    {field.value}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+
+        <ProfileFieldGroup title="Identity" fields={identityFields} />
+        <ProfileFieldGroup title="Financial context" fields={financialFields} />
+
         <div className="mt-4 rounded-lg bg-[#F4F7F9] px-3 py-2.5 text-[10px] leading-4 text-[#667085]">
           Simulated MyInfo and client-declared profile used for this POC.
         </div>
       </section>
 
-      <CoveragePortfolio categories={items} />
+      <CoveragePortfolio categories={items} timestamp={snapshot.timestamp} />
+    </div>
+  );
+}
+
+function ProfileFieldGroup({
+  title,
+  fields,
+}: {
+  title: string;
+  fields: typeof profileFields;
+}) {
+  return (
+    <div className="mt-4 rounded-lg border border-[#E5EAF0] bg-[#FBFCFD] p-3">
+      <div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-[#667085]">
+        {title}
+      </div>
+      <div className="divide-y divide-[#E5EAF0]">
+        {fields.map((field) => {
+          const Icon = profileIcons[field.label];
+          return (
+            <div key={field.label} className="flex items-center gap-3 py-2.5">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[#EFF6FF] text-sci">
+                <Icon size={16} />
+              </div>
+              <div className="min-w-0">
+                <div className="text-[10px] font-semibold uppercase text-[#667085]">
+                  {field.label}
+                </div>
+                <div className="mt-0.5 truncate text-xs font-semibold text-[#1D2939]">
+                  {field.value}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
 
 type EngagementDashboardProps = AdvisorDashboardProps & {
   needs: string[];
-  engagement: number[];
+  engagement: DashboardCheckpoint[];
   engagedCategories: Category[];
+  categories: Category[];
+  snapshot: DashboardSessionSnapshot;
+  checkpoint: DashboardCheckpoint;
+  sessionNumber: number;
+  durationMinutes: number;
+  onSessionNumberChange: (value: number) => void;
+  onDurationChange: (value: number) => void;
   coverageProgress: number;
   selected: number;
   total: number;
@@ -352,6 +403,13 @@ function EngagementDashboard({
   needs,
   engagement,
   engagedCategories,
+  categories,
+  snapshot,
+  checkpoint,
+  sessionNumber,
+  durationMinutes,
+  onSessionNumberChange,
+  onDurationChange,
   coverageProgress,
   selected,
   total,
@@ -365,26 +423,26 @@ function EngagementDashboard({
   handwrittenNoteImage,
 }: EngagementDashboardProps) {
   const averageRelativity = Math.round(
-    engagement.reduce((sum, value) => sum + value, 0) /
+    engagement.reduce((sum, item) => sum + item.engagement, 0) /
       Math.max(engagement.length, 1),
   );
-  const spokenWords = sessionTranscript
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean).length;
-  const averageDuration = spokenWords
-    ? Math.max(1, Math.round((spokenWords / 130) * 10) / 10)
-    : 18.4;
+  const summary = buildUnderstandingSummary(
+    checkpoint.categories,
+    categoryLookup,
+  );
 
   return (
     <div className="space-y-5">
       <section className="rounded-lg border border-[#DCE4EA] bg-white p-5">
-        <div className="mb-4">
-          <h2 className="font-semibold">Client needs & engagement</h2>
-          <p className="mt-1 text-xs text-[#667085]">
-            Conversation priorities and understanding across relevant policy
-            areas.
-          </p>
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="font-semibold">Client needs & engagement</h2>
+            <p className="mt-1 text-xs text-[#667085]">
+              Conversation priorities and understanding across relevant policy
+              areas.
+            </p>
+          </div>
+          <DataTimestamp timestamp={snapshot.timestamp} />
         </div>
         <div className="grid gap-4 2xl:grid-cols-[1.2fr_.8fr]">
           <div>
@@ -392,19 +450,25 @@ function EngagementDashboard({
               Top 3 needs statement
             </div>
             <div className="grid gap-2 sm:grid-cols-3">
-              {needs.map((need, index) => (
-                <div
-                  key={need}
-                  className="min-h-[112px] rounded-lg border border-[#E5EAF0] bg-[#F8FAFB] p-3"
-                >
-                  <span className="flex h-7 w-7 items-center justify-center rounded-md bg-white text-xs font-bold text-sci shadow-sm">
-                    {index + 1}
-                  </span>
-                  <div className="mt-3 text-xs font-semibold leading-5 text-[#1D2939]">
-                    {need}
+              {needs.map((need, index) => {
+                const [label, why] = need.split("|");
+                return (
+                  <div
+                    key={need}
+                    className="min-h-[126px] rounded-lg border border-[#E5EAF0] bg-[#F8FAFB] p-3"
+                  >
+                    <span className="flex h-7 w-7 items-center justify-center rounded-md bg-white text-xs font-bold text-sci shadow-sm">
+                      {index + 1}
+                    </span>
+                    <div className="mt-3 text-xs font-semibold leading-5 text-[#1D2939]">
+                      {label}
+                    </div>
+                    <div className="mt-2 text-[10px] font-medium leading-4 text-[#667085]">
+                      {why}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
           <div>
@@ -413,15 +477,15 @@ function EngagementDashboard({
             </div>
             <div className="grid gap-2 sm:grid-cols-2 2xl:grid-cols-1">
               <MetricCard
-                label="Avg. conversation relativity"
+                label="Current conversation relevance"
                 value={`${averageRelativity}%`}
-                detail="Relevant session content"
+                detail={`Checkpoint at ${durationMinutes} min`}
                 icon={Target}
               />
               <MetricCard
-                label="Avg. conversation duration"
-                value={`${averageDuration} min`}
-                detail="Estimated from captured speech"
+                label="Session checkpoint"
+                value={`S${sessionNumber} · ${checkpoint.engagement}%`}
+                detail={checkpoint.trigger}
                 icon={CalendarClock}
               />
             </div>
@@ -429,33 +493,71 @@ function EngagementDashboard({
         </div>
       </section>
 
-      <div className="grid gap-5 xl:grid-cols-[.8fr_1.2fr]">
-        <section className="rounded-lg border border-[#DCE4EA] bg-white p-5">
-          <h2 className="font-semibold">Engagement over time</h2>
-          <p className="mt-1 text-xs text-[#667085]">
-            Conversation relativity against duration.
-          </p>
-          <div className="mt-4">
-            <EngagementChart points={engagement} />
+      <section className="rounded-lg border border-[#DCE4EA] bg-white p-5">
+        <div className="flex flex-col gap-4 border-b border-[#E5EAF0] pb-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <h2 className="font-semibold">Engagement over time + priority mapping</h2>
+            <p className="mt-1 text-xs text-[#667085]">
+              Both views update from the same session and duration filters.
+            </p>
+            <DataTimestamp timestamp={snapshot.timestamp} className="mt-2" />
           </div>
-        </section>
-        <PriorityMap categories={categories} />
-      </div>
+          <DashboardFilters
+            sessionNumber={sessionNumber}
+            durationMinutes={durationMinutes}
+            minDuration={snapshot.checkpoints[0].durationMinutes}
+            maxDuration={snapshot.durationMinutes}
+            onSessionNumberChange={onSessionNumberChange}
+            onDurationChange={onDurationChange}
+          />
+        </div>
+        <div className="mt-5 grid gap-5 xl:grid-cols-[.9fr_1.1fr]">
+          <EngagementChart points={engagement} />
+          <PriorityMap categories={categories} />
+        </div>
+        <div className="mt-5 rounded-lg border border-[#CFE2F3] bg-[#F3F9FF] p-3">
+          <div className="flex items-start gap-2">
+            <Info size={15} className="mt-0.5 shrink-0 text-sci" />
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-wide text-sci">
+                Plain-English dynamic summary
+              </div>
+              <p className="mt-1 text-xs leading-5 text-[#344054]">{summary}</p>
+            </div>
+          </div>
+        </div>
+      </section>
 
       <div className="grid gap-5 xl:grid-cols-2">
-        <UnderstandingChart categories={engagedCategories} />
+        <UnderstandingChart
+          categories={engagedCategories}
+          summary={summary}
+          timestamp={snapshot.timestamp}
+        />
         <FollowUpAreas
           learningPoints={learningPoints}
           coverageItems={coverageItems}
           selectedIds={selectedCoverageIds}
+          timestamp={snapshot.timestamp}
         />
       </div>
 
       <section className="rounded-lg border border-[#DCE4EA] bg-white p-5">
-        <h2 className="font-semibold">Session progress</h2>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="font-semibold">Session progress</h2>
+            <p className="mt-1 text-xs text-[#667085]">
+              Discussion coverage against the advisor checklist.
+            </p>
+          </div>
+          <DataTimestamp timestamp={snapshot.timestamp} />
+        </div>
         <div className="mt-4 grid gap-5 xl:grid-cols-[auto_1fr] xl:items-start">
-          <div className="flex items-center gap-4">
-            <Ring value={coverageProgress} />
+          <div className="flex items-start gap-4">
+            <div>
+              <Ring value={coverageProgress} />
+              <ThresholdGauge value={coverageProgress} />
+            </div>
             <div>
               <div className="text-sm font-semibold">Discussion coverage</div>
               <p className="mt-1 text-xs leading-5 text-[#667085]">
@@ -477,6 +579,9 @@ function EngagementDashboard({
               hasNotes={Boolean(clientNotes.trim() || handwrittenNoteImage)}
               learningPointCount={learningPoints.length}
             />
+            <p className="mt-3 rounded-md bg-[#F3F9FF] px-3 py-2 text-[10px] leading-4 text-[#344054]">
+              {summary}
+            </p>
           </div>
         </div>
       </section>
@@ -507,6 +612,114 @@ function MetricCard({
       </div>
     </div>
   );
+}
+
+function DataTimestamp({
+  timestamp,
+  className = "",
+}: {
+  timestamp: string;
+  className?: string;
+}) {
+  return (
+    <div className={`flex items-center gap-1 text-[9px] font-semibold text-[#8A94A3] ${className}`}>
+      <Clock3 size={11} /> As of {timestamp}
+    </div>
+  );
+}
+
+function DashboardFilters({
+  sessionNumber,
+  durationMinutes,
+  minDuration,
+  maxDuration,
+  onSessionNumberChange,
+  onDurationChange,
+}: {
+  sessionNumber: number;
+  durationMinutes: number;
+  minDuration: number;
+  maxDuration: number;
+  onSessionNumberChange: (value: number) => void;
+  onDurationChange: (value: number) => void;
+}) {
+  return (
+    <div className="grid w-full gap-2 sm:grid-cols-[150px_minmax(180px,240px)] lg:w-auto">
+      <label className="flex min-h-11 flex-col justify-center rounded-lg border border-[#C9D3DC] bg-[#F8FAFB] px-3 py-1.5">
+        <span className="text-[9px] font-bold uppercase tracking-wide text-[#667085]">
+          Session number
+        </span>
+        <select
+          value={sessionNumber}
+          onChange={(event) => onSessionNumberChange(Number(event.target.value))}
+          className="mt-0.5 w-full bg-transparent text-xs font-semibold text-[#1D2939] outline-none"
+        >
+          {[1, 2, 3, 4, 5, 6].map((value) => (
+            <option key={value} value={value}>
+              Session {value}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="rounded-lg border border-[#C9D3DC] bg-[#F8FAFB] px-3 py-1.5">
+        <span className="flex items-center justify-between text-[9px] font-bold uppercase tracking-wide text-[#667085]">
+          <span>Duration (minutes)</span>
+          <span className="text-sci">{durationMinutes} min</span>
+        </span>
+        <input
+          type="range"
+          min={minDuration}
+          max={maxDuration}
+          step={1}
+          value={durationMinutes}
+          onChange={(event) => onDurationChange(Number(event.target.value))}
+          className="advisor-range mt-1 w-full"
+          aria-label="Duration in minutes"
+        />
+      </label>
+    </div>
+  );
+}
+
+function ThresholdGauge({ value }: { value: number }) {
+  const threshold = coverageThreshold(value);
+  const tone =
+    threshold.tone === "green"
+      ? "border-[#B7E1C1] bg-[#EAF7EE] text-[#187532]"
+      : threshold.tone === "amber"
+        ? "border-[#F4D59A] bg-[#FFF4DF] text-[#9A5B00]"
+        : "border-[#F1B6BF] bg-[#FFF0F2] text-[#A41329]";
+  return (
+    <div className="mt-2 w-24">
+      <div className="relative flex h-2 overflow-visible rounded-full">
+        <span className="h-2 w-1/2 rounded-l-full bg-[#C8102E]" />
+        <span className="h-2 w-1/4 bg-[#D69200]" />
+        <span className="h-2 w-1/4 rounded-r-full bg-[#248A3D]" />
+        <span
+          className="absolute top-1/2 h-4 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white bg-[#102A43] shadow-sm"
+          style={{ left: `${Math.min(100, Math.max(0, value))}%` }}
+          aria-hidden="true"
+        />
+      </div>
+      <div className={`mt-2 rounded-md border px-1.5 py-1 text-center ${tone}`}>
+        <div className="text-[8px] font-bold leading-3">{threshold.label}</div>
+        <div className="text-[8px] font-medium leading-3">
+          {value < 50 ? "<50" : value < 75 ? "50–74" : "75+"}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FollowUpStatusIcon({ value }: { value: number }) {
+  const threshold = coverageThreshold(value);
+  const Icon =
+    threshold.tone === "red"
+      ? AlertTriangle
+      : threshold.tone === "amber"
+        ? Info
+        : CheckCircle2;
+  return <Icon size={15} className={statusText(value)} aria-hidden="true" />;
 }
 
 const productCatalog: ProductSuggestionCatalog = {
@@ -541,27 +754,26 @@ function ProductSuggestionsDashboard({
   suggestions,
   clientNotes,
   sessionTranscript,
+  timestamp,
 }: {
   suggestions: Category[];
   clientNotes: string;
   sessionTranscript: string;
+  timestamp: string;
 }) {
   const [instruction, setInstruction] = useState("");
   const [catalog, setCatalog] = useState(productCatalog);
   const [updateMessage, setUpdateMessage] = useState("");
+  const [updateTone, setUpdateTone] = useState<"success" | "error">("success");
   const [isRegenerating, setIsRegenerating] = useState(false);
-  const orderedCategories = [
-    ...suggestions,
-    ...categories.filter(
-      (category) => !suggestions.some((item) => item.id === category.id),
-    ),
-  ];
+  const orderedCategories = suggestions;
 
   const regenerate = async () => {
     const request = instruction.trim();
     if (!request) return;
     setIsRegenerating(true);
     setUpdateMessage("");
+    setUpdateTone("success");
     try {
       const result = await refineProductSuggestions(request, catalog, {
         clientNotes,
@@ -571,6 +783,7 @@ function ProductSuggestionsDashboard({
       setUpdateMessage(result.summary);
       setInstruction("");
     } catch (error) {
+      setUpdateTone("error");
       setUpdateMessage(
         error instanceof Error
           ? error.message
@@ -584,9 +797,12 @@ function ProductSuggestionsDashboard({
   return (
     <div className="space-y-5">
       <section className="rounded-lg border border-[#C9D8E3] bg-white p-4 shadow-sm">
-        <div className="flex items-center gap-2 text-xs font-semibold text-[#344054]">
-          <WandSparkles size={16} className="text-sci" /> Refine product
-          suggestions
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-xs font-semibold text-[#344054]">
+            <WandSparkles size={16} className="text-sci" /> Refine product
+            suggestions
+          </div>
+          <DataTimestamp timestamp={timestamp} />
         </div>
         <div className="mt-3 flex flex-col gap-2 sm:flex-row">
           <input
@@ -609,22 +825,27 @@ function ProductSuggestionsDashboard({
           </button>
         </div>
         {updateMessage && (
-          <p className="mt-2 text-[10px] font-medium text-[#248A3D]">
+          <p
+            className={`mt-2 text-[10px] font-medium ${updateTone === "error" ? "text-[#C8102E]" : "text-[#248A3D]"}`}
+          >
             {updateMessage}
           </p>
         )}
       </section>
 
       <section className="rounded-lg border border-[#DCE4EA] bg-white p-5">
-        <div className="mb-4">
-          <h2 className="font-semibold">Product suggestions</h2>
-          <p className="mt-1 text-xs text-[#667085]">
-            Icon-categorised pathways based on conversation context and advisor
-            input.
-          </p>
-          <span className="mt-2 inline-flex rounded-md bg-[#F1EDFF] px-2 py-1 text-[9px] font-bold uppercase text-[#6F42C1]">
-            Illustrative POC catalog
-          </span>
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="font-semibold">Product suggestions</h2>
+            <p className="mt-1 text-xs text-[#667085]">
+              Prioritised by unmet need, with the same category icon and colour
+              mapping used across the advisor console.
+            </p>
+            <span className="mt-2 inline-flex rounded-md bg-[#F1EDFF] px-2 py-1 text-[9px] font-bold uppercase text-[#6F42C1]">
+              Illustrative POC catalog
+            </span>
+          </div>
+          <DataTimestamp timestamp={timestamp} />
         </div>
         <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-5">
           {orderedCategories.map((category, categoryIndex) => {
@@ -634,15 +855,28 @@ function ProductSuggestionsDashboard({
                 key={category.id}
                 className="overflow-hidden rounded-lg border border-[#DCE4EA] bg-[#F8FAFB]"
               >
-                <div className="border-b border-[#DCE4EA] bg-white p-3">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#E8F3FA] text-sci">
+                <div className="bg-white p-3">
+                  <div
+                    className="-mx-3 -mt-3 mb-3 h-1"
+                    style={{ backgroundColor: category.color }}
+                  />
+                  <div
+                    className="flex h-10 w-10 items-center justify-center rounded-lg"
+                    style={{
+                      backgroundColor: category.softColor,
+                      color: category.color,
+                    }}
+                  >
                     <Icon size={18} />
                   </div>
-                  <div className="mt-2 text-xs font-semibold leading-4">
+                  <div className="mt-2 text-sm font-semibold leading-5">
                     {category.label}
                   </div>
                   {categoryIndex < 3 && (
-                    <div className="mt-1 text-[9px] font-bold uppercase text-sci">
+                    <div
+                      className="mt-1 text-[9px] font-bold uppercase"
+                      style={{ color: category.color }}
+                    >
                       Session priority {categoryIndex + 1}
                     </div>
                   )}
@@ -653,11 +887,14 @@ function ProductSuggestionsDashboard({
                       key={product.name}
                       className="flex min-h-[68px] gap-2 p-2"
                     >
-                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-white text-[#667085] shadow-sm">
+                      <div
+                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-white shadow-sm"
+                        style={{ color: category.color }}
+                      >
                         <Icon size={15} />
                       </div>
                       <div className="min-w-0">
-                        <div className="text-[11px] font-semibold leading-4 text-[#1D2939]">
+                        <div className="text-xs font-semibold leading-4 text-[#1D2939]">
                           {product.name}
                         </div>
                         <div className="mt-1 text-[9px] leading-3 text-[#667085]">
@@ -720,10 +957,12 @@ function FollowUpAreas({
   learningPoints,
   coverageItems,
   selectedIds,
+  timestamp,
 }: {
   learningPoints: Understanding[];
   coverageItems: CoverageItem[];
   selectedIds: string[];
+  timestamp: string;
 }) {
   const areas = coverageItems
     .map((item) => {
@@ -748,44 +987,44 @@ function FollowUpAreas({
 
   return (
     <section className="rounded-lg border border-[#DCE4EA] bg-white p-5">
-      <div className="mb-5 flex items-end justify-between gap-4">
+      <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="font-semibold">Follow-up areas</h2>
           <p className="mt-1 text-xs text-[#667085]">
-            Priority comparison grouped by discussion scheme.
+            Dynamic priority bars use shared attention thresholds.
           </p>
         </div>
-        <span className="shrink-0 text-[10px] font-semibold text-[#667085]">
-          Higher = revisit sooner
-        </span>
+        <DataTimestamp timestamp={timestamp} />
       </div>
       <div className="space-y-4">
         {areas.map(({ item, scheme, priority }) => (
           <div key={item.id}>
-            <div className="mb-1.5 flex items-end justify-between gap-3">
-              <div className="min-w-0">
-                <div className="truncate text-xs font-semibold text-[#344054]">
-                  {item.label}
-                </div>
-                <div
-                  className="mt-0.5 text-[9px] font-bold uppercase"
-                  style={{ color: scheme.color }}
-                >
-                  {scheme.category}
+            <div className="mb-1.5 flex items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-2">
+                <FollowUpStatusIcon value={priority} />
+                <div className="min-w-0">
+                  <div className="truncate text-xs font-semibold text-[#344054]">
+                    {item.label}
+                  </div>
+                  <div className="mt-0.5 truncate text-[9px] font-bold uppercase text-[#667085]">
+                    {scheme.category}
+                  </div>
                 </div>
               </div>
-              <span className="text-xs font-bold text-[#475467]">
+              <span
+                className={`shrink-0 text-xs font-bold ${statusText(priority)}`}
+              >
                 {priority}%
               </span>
             </div>
             <div className="relative h-2 rounded-full bg-[#E9EDF1]">
               <div
-                className="h-full rounded-full opacity-75"
-                style={{ width: `${priority}%`, backgroundColor: scheme.color }}
+                className={`h-full rounded-full ${statusColor(priority)}`}
+                style={{ width: `${priority}%` }}
               />
               <span
-                className="absolute top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] border-white shadow-[0_1px_5px_rgba(0,0,0,.22)]"
-                style={{ left: `${priority}%`, backgroundColor: scheme.color }}
+                className={`absolute top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] border-white shadow-[0_1px_5px_rgba(0,0,0,.22)] ${statusColor(priority)}`}
+                style={{ left: `${priority}%` }}
                 aria-hidden="true"
               />
             </div>
@@ -794,274 +1033,113 @@ function FollowUpAreas({
       </div>
       <div className="mt-5 flex items-center justify-between border-t border-[#E5EAF0] pt-3 text-[9px] font-semibold text-[#8A94A3]">
         <span>0 · Lower priority</span>
-        <span>100 · Higher priority</span>
+        <span>100 · Revisit sooner</span>
       </div>
     </section>
   );
 }
 
-function CoveragePortfolio({ categories: items }: { categories: Category[] }) {
+function CoveragePortfolio({
+  categories: items,
+  timestamp,
+}: {
+  categories: Category[];
+  timestamp: string;
+}) {
   return (
-    <section className="rounded-lg border border-[#DCE4EA] bg-white p-5">
-      <div className="mb-4">
-        <h2 className="font-semibold">Current coverage profile</h2>
-        <p className="mt-1 text-xs text-[#667085]">
-          Recorded protection as a share of profile-indicated need.
-        </p>
+    <section className="rounded-lg border border-[#DCE4EA] bg-white p-5 shadow-[0_8px_28px_rgba(30,64,96,.04)]">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="font-semibold">Current coverage profile</h2>
+          <p className="mt-1 text-xs text-[#667085]">
+            Sorted by largest unmet need. Bars and icons identify the insurance
+            category; status labels show the current protection level.
+          </p>
+        </div>
+        <DataTimestamp timestamp={timestamp} />
       </div>
       <div className="space-y-3">
         {items.map((category) => {
           const Icon = category.icon;
+          const delta = coverageDelta(
+            category.coverage,
+            category.previousCoverage,
+          );
+          const threshold = coverageThreshold(category.coverage);
+          const TrendIcon =
+            delta < 0 ? ArrowDownRight : delta > 0 ? ArrowUpRight : Minus;
           return (
             <div
               key={category.id}
-              className="grid grid-cols-[28px_1fr_38px] items-center gap-3"
+              className="grid grid-cols-[32px_1fr_auto] items-center gap-3 rounded-lg border border-[#E5EAF0] bg-[#FBFCFD] p-2.5 sm:grid-cols-[36px_1fr_auto]"
+              style={{ borderLeft: `4px solid ${category.color}` }}
             >
-              <div className="flex h-7 w-7 items-center justify-center rounded-md bg-[#F0F4F7] text-[#475467]">
+              <div
+                className="flex h-8 w-8 items-center justify-center rounded-md"
+                style={{
+                  backgroundColor: category.softColor,
+                  color: category.color,
+                }}
+              >
                 <Icon size={15} />
               </div>
-              <div>
-                <div className="mb-1.5 text-[11px] font-semibold">
-                  {category.label}
+              <div className="min-w-0">
+                <div className="mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                  <span className="text-xs font-semibold sm:text-sm">
+                    {category.label}
+                  </span>
                 </div>
-                <div className="h-2 overflow-hidden rounded-full bg-[#EEF1F4]">
+                <div className="h-2.5 overflow-hidden rounded-full bg-[#EEF1F4]">
                   <div
-                    className={`h-full rounded-full ${statusColor(category.coverage)}`}
-                    style={{ width: `${category.coverage}%` }}
+                    className="h-full rounded-full"
+                    style={{
+                      width: `${category.coverage}%`,
+                      backgroundColor: category.color,
+                    }}
                   />
                 </div>
               </div>
-              <div
-                className={`text-right text-xs font-bold ${statusText(category.coverage)}`}
-              >
-                {category.coverage}%
+              <div className="text-right">
+                <div className="flex items-center justify-end gap-1.5">
+                  <span
+                    className={`inline-flex items-center gap-0.5 text-[10px] font-bold ${deltaText(delta)}`}
+                    title="Change since previous session"
+                  >
+                    <TrendIcon size={13} aria-hidden="true" />
+                    {formatDelta(delta)} pp
+                  </span>
+                  <span
+                    className="text-base font-bold leading-none"
+                    style={{ color: category.color }}
+                  >
+                    {category.coverage}%
+                  </span>
+                </div>
+                <div
+                  className={`mt-1 text-[8px] font-bold uppercase tracking-wide ${statusText(category.coverage)}`}
+                >
+                  {threshold.label}
+                </div>
               </div>
             </div>
           );
         })}
       </div>
       <p className="mt-4 border-t border-[#E5EAF0] pt-3 text-[10px] leading-4 text-[#667085]">
-        Percentage = recorded coverage scope ÷ profile-indicated need.
-        Categories without a recorded policy are shown as 0%.
+        Percentage = recorded coverage scope ÷ profile-indicated need. Deltas are
+        percentage-point changes from the previous session.
       </p>
     </section>
   );
 }
 
-function ProductPathways({ suggestions }: { suggestions: Category[] }) {
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const descriptors: Record<string, string> = {
-    shield: "Hospital expense protection",
-    critical: "Lump-sum recovery support",
-    life: "Family financial protection",
-    retirement: "Long-term income planning",
-    investment: "Protection with market exposure",
-  };
-  const pathwayDetails: Record<
-    string,
-    { signal: string; need: string; intent: string }
-  > = {
-    shield: {
-      signal: "Hospital bill uncertainty",
-      need: "Medical expense protection",
-      intent: "Clarify eligible hospital costs",
-    },
-    critical: {
-      signal: "No recorded lump-sum cover",
-      need: "Recovery cash support",
-      intent: "Explore critical illness protection",
-    },
-    life: {
-      signal: "No recorded life cover",
-      need: "Family financial continuity",
-      intent: "Explore dependant protection",
-    },
-    retirement: {
-      signal: "Long-term income goal",
-      need: "Future income continuity",
-      intent: "Explore retirement planning",
-    },
-    investment: {
-      signal: "Growth and protection interest",
-      need: "Long-term wealth participation",
-      intent: "Explore linked protection",
-    },
-  };
-  return (
-    <section className="rounded-lg border border-[#DCE4EA] bg-white p-5">
-      <div className="mb-4 flex items-start justify-between gap-3">
-        <div>
-          <h2 className="font-semibold">AI-ranked product pathways</h2>
-          <p className="mt-1 text-xs text-[#667085]">
-            Visual categories prepared from current session context.
-          </p>
-        </div>
-        <span className="flex items-center gap-1 rounded-md bg-[#F1EDFF] px-2 py-1 text-[10px] font-bold text-[#6F42C1]">
-          <Sparkles size={11} /> PREDICTION POC
-        </span>
-      </div>
-      <div className="space-y-3">
-        {suggestions.map((category, index) => {
-          const Icon = category.icon;
-          const ranks = ["Primary", "Explore", "Monitor"];
-          const expanded = expandedId === category.id;
-          const detail = pathwayDetails[category.id];
-          return (
-            <div key={category.id}>
-              <button
-                type="button"
-                aria-expanded={expanded}
-                onClick={() => setExpandedId(expanded ? null : category.id)}
-                className={`flex min-h-[86px] w-full items-center gap-3 rounded-lg border p-3 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-sci focus-visible:ring-offset-2 ${
-                  expanded
-                    ? "border-[#9CCDFD] bg-[#F2F8FE]"
-                    : "border-[#E5EAF0] bg-[#F8FAFB] hover:border-[#C5D9EA] hover:bg-white"
-                }`}
-              >
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-white text-sci shadow-sm">
-                  <Icon size={21} />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="text-[10px] font-bold uppercase text-sci">
-                    {ranks[index]}
-                  </div>
-                  <div className="mt-0.5 truncate text-xs font-semibold">
-                    {category.label}
-                  </div>
-                  <div className="mt-1 truncate text-[11px] text-[#667085]">
-                    {descriptors[category.id]}
-                  </div>
-                </div>
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[#667085]">
-                  <ChevronDown
-                    size={17}
-                    className={`transition-transform ${expanded ? "rotate-180" : ""}`}
-                  />
-                </div>
-              </button>
-              {expanded && (
-                <ProductPathwayDetail
-                  category={category}
-                  descriptor={descriptors[category.id]}
-                  detail={detail}
-                />
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </section>
-  );
-}
-
-function ProductPathwayDetail({
-  category,
-  descriptor,
-  detail,
-}: {
-  category: Category;
-  descriptor: string;
-  detail: { signal: string; need: string; intent: string };
-}) {
-  const ProductIcon = category.icon;
-  return (
-    <div className="mt-2 rounded-lg border border-[#CFE2F3] bg-white p-4 shadow-[0_8px_24px_rgba(30,64,96,.06)]">
-      <div className="grid gap-3 border-b border-[#E5EAF0] pb-4 sm:grid-cols-2">
-        <div>
-          <div className="text-[10px] font-bold uppercase text-[#667085]">
-            Product pathway
-          </div>
-          <div className="mt-1 text-sm font-semibold">{category.label}</div>
-        </div>
-        <div>
-          <div className="text-[10px] font-bold uppercase text-[#667085]">
-            Discussion intent
-          </div>
-          <div className="mt-1 text-sm font-semibold">{descriptor}</div>
-        </div>
-      </div>
-
-      <div className="mt-4">
-        <div className="mb-3 text-[10px] font-bold uppercase text-[#667085]">
-          Why it surfaced
-        </div>
-        <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
-          <FlowNode
-            icon={MessageSquareText}
-            eyebrow="Session signal"
-            label={detail.signal}
-          />
-          <FlowArrow />
-          <FlowNode icon={Target} eyebrow="Client need" label={detail.need} />
-          <FlowArrow />
-          <FlowNode
-            icon={ProductIcon}
-            eyebrow="Product"
-            label={category.label}
-            active
-          />
-          <FlowArrow />
-          <FlowNode
-            icon={CheckCircle2}
-            eyebrow="Intent"
-            label={detail.intent}
-          />
-        </div>
-      </div>
-      <p className="mt-3 text-[10px] leading-4 text-[#667085]">
-        Context signal only. Suitability and recommendations remain with the
-        licensed advisor.
-      </p>
-    </div>
-  );
-}
-
-function FlowNode({
-  icon: Icon,
-  eyebrow,
-  label,
-  active = false,
-}: {
-  icon: LucideIcon;
-  eyebrow: string;
-  label: string;
-  active?: boolean;
-}) {
-  return (
-    <div
-      className={`flex min-h-[92px] min-w-0 flex-1 flex-col justify-between rounded-lg border p-3 ${
-        active
-          ? "border-[#9CCDFD] bg-[#EEF7FF]"
-          : "border-[#E5EAF0] bg-[#F8FAFB]"
-      }`}
-    >
-      <Icon size={18} className={active ? "text-sci" : "text-[#667085]"} />
-      <div className="mt-3">
-        <div className="text-[9px] font-bold uppercase text-[#8A94A3]">
-          {eyebrow}
-        </div>
-        <div className="mt-1 text-[10px] font-semibold leading-4 text-[#344054]">
-          {label}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function FlowArrow() {
-  return (
-    <div className="flex shrink-0 justify-center text-[#98A2B3]">
-      <ArrowRight size={16} className="rotate-90 sm:rotate-0" />
-    </div>
-  );
-}
-
-function EngagementChart({ points }: { points: number[] }) {
+function EngagementChart({ points }: { points: DashboardCheckpoint[] }) {
   const coordinates = points.map((point, index) => {
     const x = 12 + index * (76 / Math.max(points.length - 1, 1));
-    const y = 88 - point * 0.72;
+    const y = 88 - point.engagement * 0.72;
     return `${x},${y}`;
   });
+  const latest = points.at(-1);
   return (
     <div>
       <div className="mb-2 flex items-center justify-between">
@@ -1069,7 +1147,7 @@ function EngagementChart({ points }: { points: number[] }) {
           Engagement level
         </div>
         <div className="text-xs font-bold text-[#248A3D]">
-          {points.at(-1)}% relevant
+          {latest?.engagement || 0}% relevant
         </div>
       </div>
       <div className="rounded-lg border border-[#E5EAF0] bg-[#F8FAFB] p-3">
@@ -1116,6 +1194,7 @@ function EngagementChart({ points }: { points: number[] }) {
           />
           {coordinates.map((coordinate, index) => {
             const [cx, cy] = coordinate.split(",");
+            const point = points[index];
             return (
               <circle
                 key={coordinate}
@@ -1125,11 +1204,39 @@ function EngagementChart({ points }: { points: number[] }) {
                 fill={index === coordinates.length - 1 ? "#248A3D" : "#FFFFFF"}
                 stroke="#248A3D"
                 strokeWidth="1.3"
-              />
+              >
+                <title>
+                  {point.durationMinutes} min · {point.trigger} · {point.engagement}%
+                </title>
+              </circle>
+            );
+          })}
+          {coordinates.map((coordinate, index) => {
+            const shouldLabel = index < 2 || index === coordinates.length - 1;
+            if (!shouldLabel) return null;
+            const [cx, cy] = coordinate.split(",");
+            return (
+              <text
+                key={`trigger-${coordinate}`}
+                x={cx}
+                y={Math.max(12, Number(cy) - 5)}
+                textAnchor="middle"
+                fontSize="3"
+                fontWeight="600"
+                fill="#475467"
+              >
+                {shortTrigger(points[index].trigger)}
+              </text>
             );
           })}
           <text x="2" y="12" fontSize="4" fill="#667085">
             100%
+          </text>
+          <text x="4" y="35" fontSize="4" fill="#667085">
+            75%
+          </text>
+          <text x="4" y="59" fontSize="4" fill="#667085">
+            50%
           </text>
           <text x="4" y="89" fontSize="4" fill="#667085">
             0%
@@ -1138,6 +1245,17 @@ function EngagementChart({ points }: { points: number[] }) {
             Duration (minutes)
           </text>
         </svg>
+        <div className="mt-2 flex flex-wrap gap-1.5" aria-label="Engagement triggers">
+          {points.map((point) => (
+            <span
+              key={`${point.durationMinutes}-${point.trigger}`}
+              className="inline-flex items-center gap-1 rounded-md border border-[#DCE4EA] bg-white px-2 py-1 text-[9px] font-medium text-[#667085]"
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-[#248A3D]" />
+              {point.durationMinutes}m · {point.trigger}
+            </span>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -1152,7 +1270,19 @@ function PriorityMap({ categories: items }: { categories: Category[] }) {
           Relative coverage against relative client need.
         </p>
       </div>
-      <div className="relative ml-8 h-[260px] border-b border-l border-[#98A2B3] bg-[linear-gradient(to_right,#E5EAF0_1px,transparent_1px),linear-gradient(to_bottom,#E5EAF0_1px,transparent_1px)] bg-[size:25%_25%]">
+      <div className="relative ml-8 h-[260px] overflow-visible border-b border-l border-[#98A2B3] bg-[linear-gradient(to_right,#E5EAF0_1px,transparent_1px),linear-gradient(to_bottom,#E5EAF0_1px,transparent_1px)] bg-[size:25%_25%]">
+        <div className="absolute bottom-0 right-0 h-1/2 w-1/2 bg-[#FFF1F2] opacity-70" />
+        <div className="absolute bottom-2 right-2 rounded bg-[#FFF1F2] px-1.5 py-1 text-[8px] font-bold uppercase leading-3 text-[#A41329]">
+          Risk zone
+          <br />
+          High need · low coverage
+        </div>
+        <div className="absolute left-2 top-2 text-[8px] font-semibold uppercase text-[#98A2B3]">
+          Lower need · higher coverage
+        </div>
+        <div className="absolute right-2 top-2 text-[8px] font-semibold uppercase text-[#667085]">
+          High need · higher coverage
+        </div>
         <div className="absolute -left-9 top-1/2 -translate-y-1/2 -rotate-90 whitespace-nowrap text-[10px] font-semibold text-[#667085]">
           Relative coverage
         </div>
@@ -1163,12 +1293,15 @@ function PriorityMap({ categories: items }: { categories: Category[] }) {
           <div
             key={category.id}
             title={`${category.label}: ${category.need}% need, ${category.coverage}% coverage`}
-            className={`absolute h-5 w-5 -translate-x-1/2 translate-y-1/2 rounded-full border-2 border-white shadow-md ${statusColor(category.coverage - category.need + 55)}`}
+            className="absolute flex h-6 w-6 -translate-x-1/2 translate-y-1/2 items-center justify-center rounded-full border-2 border-white shadow-md"
             style={{
               left: `${category.need}%`,
               bottom: `${category.coverage}%`,
+              backgroundColor: category.color,
             }}
-          />
+          >
+            <category.icon size={12} className="text-white" />
+          </div>
         ))}
       </div>
       <div className="mt-8 grid grid-cols-2 gap-x-3 gap-y-2 sm:grid-cols-3">
@@ -1178,7 +1311,8 @@ function PriorityMap({ categories: items }: { categories: Category[] }) {
             className="flex items-center gap-1.5 text-[10px] font-semibold text-[#475467]"
           >
             <span
-              className={`h-2.5 w-2.5 shrink-0 rounded-full ${statusColor(category.coverage - category.need + 55)}`}
+              className="h-2.5 w-2.5 shrink-0 rounded-full"
+              style={{ backgroundColor: category.color }}
             />
             {category.shortLabel}
           </div>
@@ -1188,35 +1322,56 @@ function PriorityMap({ categories: items }: { categories: Category[] }) {
   );
 }
 
-function UnderstandingChart({ categories: items }: { categories: Category[] }) {
+function UnderstandingChart({
+  categories: items,
+  summary,
+  timestamp,
+}: {
+  categories: Category[];
+  summary: string;
+  timestamp: string;
+}) {
   return (
     <section className="rounded-lg border border-[#DCE4EA] bg-white p-5">
-      <div className="mb-4 flex items-start justify-between gap-3">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="font-semibold">Relative understanding</h2>
           <p className="mt-1 text-xs text-[#667085]">
-            Only categories engaged during the session are shown.
+            Thresholds show whether each area is ready to proceed or needs
+            clarification.
           </p>
         </div>
-        <span className="text-[10px] font-semibold text-[#667085]">
-          {items.length}/5 active
-        </span>
+        <div className="text-right">
+          <DataTimestamp timestamp={timestamp} />
+          <span className="mt-1 block text-[10px] font-semibold text-[#667085]">
+            {items.length}/5 active
+          </span>
+        </div>
       </div>
       <div className="space-y-4">
         {items.map((category) => {
           const Icon = category.icon;
+          const threshold = coverageThreshold(category.understanding);
           return (
             <div key={category.id}>
               <div className="mb-1.5 flex items-center justify-between">
                 <div className="flex items-center gap-2 text-xs font-semibold">
-                  <Icon size={14} className="text-[#667085]" />
+                  <Icon size={14} style={{ color: category.color }} />
                   {category.label}
                 </div>
-                <span
-                  className={`text-xs font-bold ${statusText(category.understanding)}`}
-                >
-                  {category.understanding}%
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <FollowUpStatusIcon value={category.understanding} />
+                  <span
+                    className={`text-xs font-bold ${statusText(category.understanding)}`}
+                  >
+                    {category.understanding}%
+                  </span>
+                  <span
+                    className={`hidden text-[8px] font-bold uppercase sm:inline ${statusText(category.understanding)}`}
+                  >
+                    {threshold.label}
+                  </span>
+                </div>
               </div>
               <div className="h-3 overflow-hidden rounded-full bg-[#EEF1F4]">
                 <div
@@ -1233,6 +1388,9 @@ function UnderstandingChart({ categories: items }: { categories: Category[] }) {
           Understanding appears after a category is discussed.
         </div>
       )}
+      <div className="mt-4 border-t border-[#E5EAF0] pt-3 text-[10px] leading-4 text-[#344054]">
+        <span className="font-bold text-sci">Dynamic readout:</span> {summary}
+      </div>
     </section>
   );
 }
@@ -1266,10 +1424,13 @@ function ProgressSources({
   learningPointCount: number;
 }) {
   return (
-    <div className="mt-4 rounded-lg border border-[#D9E4EC] bg-[#F6F9FB] p-3">
-      <div className="flex items-center gap-2 text-[10px] font-bold uppercase text-[#475467]">
-        <Info size={13} className="text-sci" /> Sources & calculation
-      </div>
+    <details className="mt-4 rounded-lg border border-[#D9E4EC] bg-[#F6F9FB] p-3">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-[10px] font-bold uppercase text-[#475467]">
+        <span className="flex items-center gap-2">
+          <Info size={13} className="text-sci" /> Sources & calculation
+        </span>
+        <ChevronDown size={14} className="text-[#667085]" />
+      </summary>
       <div className="mt-3 space-y-2">
         <SourceRow
           icon={ListChecks}
@@ -1298,7 +1459,7 @@ function ProgressSources({
         notes. When none exist, unresolved checklist topics are shown as needing
         attention.
       </p>
-    </div>
+    </details>
   );
 }
 
@@ -1345,89 +1506,72 @@ function buildNeeds(text: string) {
   const needs = [
     {
       value: "Hospital bill affordability",
+      why: "Linked to: hospital-cover clarification",
       keywords: ["hospital", "bill", "ward", "shield"],
     },
     {
       value: "Income continuity during recovery",
+      why: "Linked to: freelance income discussion",
       keywords: ["income", "salary", "work", "freelance"],
     },
     {
       value: "Critical illness cash support",
+      why: "Linked to: no lump-sum cover recorded",
       keywords: ["critical", "lump", "serious illness"],
     },
     {
       value: "Clear exclusions and claim costs",
+      why: "Linked to: deductible and exclusions review",
       keywords: ["exclude", "deductible", "co-insurance", "pay"],
     },
     {
       value: "Long-term family protection",
+      why: "Linked to: family continuity check",
       keywords: ["family", "life insurance", "dependent"],
     },
   ];
   return needs
     .map((need) => ({
       ...need,
-      score: need.keywords.filter((keyword) => text.includes(keyword)).length,
+      score:
+        1 + need.keywords.filter((keyword) => text.includes(keyword)).length,
     }))
     .sort((a, b) => b.score - a.score)
     .slice(0, 3)
-    .map((need) => need.value);
-}
-
-function rankSuggestions(text: string) {
-  return [...categories]
-    .map((category) => ({
-      category,
-      score:
-        category.keywords.filter((keyword) => text.includes(keyword)).length +
-        (category.id === "shield" ? 2 : 0),
-    }))
-    .sort((a, b) => b.score - a.score || b.category.need - a.category.need)
-    .slice(0, 3)
-    .map((item) => item.category);
-}
-
-function buildEngagementSeries(text: string) {
-  const relevantTerms = [
-    "hospital",
-    "income",
-    "coverage",
-    "policy",
-    "critical",
-    "claim",
-    "advisor",
-    "plan",
-    "insurance",
-  ];
-  const chunks = text
-    .split(/[.!?\n]+/)
-    .filter(Boolean)
-    .slice(-6);
-  if (chunks.length < 2) return [52, 61, 68, 74, 79, 83];
-  return chunks.map((chunk, index) =>
-    Math.min(
-      96,
-      42 +
-        index * 5 +
-        relevantTerms.filter((term) => chunk.includes(term)).length * 9,
-    ),
-  );
+    .map((need) => `${need.value}|${need.why}`);
 }
 
 function statusColor(value: number) {
-  if (value >= 65) return "bg-[#248A3D]";
-  if (value >= 35) return "bg-[#D69200]";
+  const tone = coverageThreshold(value).tone;
+  if (tone === "green") return "bg-[#248A3D]";
+  if (tone === "amber") return "bg-[#D69200]";
   return "bg-[#C8102E]";
 }
 
 function statusText(value: number) {
-  if (value >= 65) return "text-[#248A3D]";
-  if (value >= 35) return "text-[#B26700]";
+  const tone = coverageThreshold(value).tone;
+  if (tone === "green") return "text-[#248A3D]";
+  if (tone === "amber") return "text-[#B26700]";
   return "text-[#C8102E]";
 }
 
 function statusHex(value: number) {
-  if (value >= 65) return "#248A3D";
-  if (value >= 35) return "#D69200";
+  const tone = coverageThreshold(value).tone;
+  if (tone === "green") return "#248A3D";
+  if (tone === "amber") return "#D69200";
   return "#C8102E";
+}
+
+function formatDelta(value: number) {
+  return value > 0 ? `+${value}` : `${value}`;
+}
+
+function shortTrigger(value: string) {
+  return value.split(" ").slice(0, 2).join(" ");
+}
+
+function deltaText(value: number) {
+  if (value > 0) return "text-[#248A3D]";
+  if (value < 0) return "text-[#C8102E]";
+  return "text-[#667085]";
 }

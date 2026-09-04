@@ -98,6 +98,39 @@ body {
     @apply rounded-md border border-[#E5E5EA] bg-white/70 px-2 py-1 text-[11px] font-semibold text-[#3A3A3C] backdrop-blur-xl;
   }
 
+  .advisor-range {
+    appearance: none;
+    height: 6px;
+    border-radius: 9999px;
+    background: #dce4ea;
+    outline: none;
+  }
+
+  .advisor-range::-webkit-slider-thumb {
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 9999px;
+    border: 3px solid #ffffff;
+    background: #0071e3;
+    box-shadow: 0 1px 5px rgba(16, 42, 67, .25);
+    cursor: grab;
+  }
+
+  .advisor-range::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border-radius: 9999px;
+    border: 3px solid #ffffff;
+    background: #0071e3;
+    box-shadow: 0 1px 5px rgba(16, 42, 67, .25);
+    cursor: grab;
+  }
+
+  .advisor-range:focus-visible {
+    box-shadow: 0 0 0 4px #d6ebff;
+  }
+
   @media (max-width: 639px) {
     .login-clamp {
       width: calc(100vw - 48px) !important;
