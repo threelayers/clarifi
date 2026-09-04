@@ -10,6 +10,7 @@ dist-server/
 clarifi-apple*.png
 .agents/
 screenshots/
+tmp/
 uploads/
 .thumbnail
 support.js

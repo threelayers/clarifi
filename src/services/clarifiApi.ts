@@ -6,10 +6,11 @@ import type {
   PolicyDocumentSummary,
   PolicyEvidence,
   PreMeetingPrep,
+  ProductSuggestionCatalog,
   Recap,
   SessionRecord,
   SessionSummary,
-  SessionState
+  SessionState,
 } from "@/types/clarifi";
 
 type ApiConfig = {
@@ -23,85 +24,133 @@ type SessionContext = {
   handwrittenNoteImage?: string;
 };
 
-const requestJson = async <T>(path: string, body: Record<string, unknown>, config: ApiConfig): Promise<T> => {
+const requestJson = async <T>(
+  path: string,
+  body: Record<string, unknown>,
+  config: ApiConfig,
+): Promise<T> => {
   const headers: Record<string, string> = {
-    "Content-Type": "application/json"
+    "Content-Type": "application/json",
   };
 
   const response = await fetch(path, {
     method: "POST",
     headers,
     credentials: "same-origin",
-    body: JSON.stringify({ ...body, model: config.model })
+    body: JSON.stringify({ ...body, model: config.model }),
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: response.statusText }));
+    const error = await response
+      .json()
+      .catch(() => ({ error: response.statusText }));
     throw new Error(error.error || `Request failed with ${response.status}`);
   }
 
   return response.json() as Promise<T>;
 };
 
-export const sendClientMessage = (messages: ClientMessage[], config: ApiConfig, context: SessionContext = {}) =>
+export const sendClientMessage = (
+  messages: ClientMessage[],
+  config: ApiConfig,
+  context: SessionContext = {},
+) =>
   requestJson<{
     reply: string;
     detected: boolean;
     misunderstanding?: string;
     evidenceIds: string[];
-    understanding: Array<{ point: string; status: "covered" | "not_covered" | "action" }>;
+    understanding: Array<{
+      point: string;
+      status: "covered" | "not_covered" | "action";
+    }>;
     teachBack?: string;
     documentEvidence?: PolicyEvidence[];
   }>(
     "/api/chat/client",
     {
-      history: messages.map((message) => ({ id: message.id, role: message.role, content: message.text })),
+      history: messages.map((message) => ({
+        id: message.id,
+        role: message.role,
+        content: message.text,
+      })),
       sessionId: context.sessionId,
       clientNotes: context.clientNotes || "",
       sessionTranscript: context.sessionTranscript || "",
-      handwrittenNoteImage: context.handwrittenNoteImage || ""
+      handwrittenNoteImage: context.handwrittenNoteImage || "",
     },
-    config
+    config,
   );
 
 export const sendAdvisorMessage = (
   messages: AdvisorMessage[],
   clientMessages: ClientMessage[],
   config: ApiConfig,
-  context: SessionContext = {}
+  context: SessionContext = {},
 ) =>
-  requestJson<{ reply: string; citations?: Array<{ source: string; quote: string }>; documentEvidence?: PolicyEvidence[] }>(
+  requestJson<{
+    reply: string;
+    citations?: Array<{ source: string; quote: string }>;
+    documentEvidence?: PolicyEvidence[];
+  }>(
     "/api/chat/advisor",
     {
-      history: messages.map((message) => ({ id: message.id, role: message.role, content: message.text })),
+      history: messages.map((message) => ({
+        id: message.id,
+        role: message.role,
+        content: message.text,
+      })),
       sessionId: context.sessionId,
       clientTranscript: clientMessages
-        .map((message) => `${message.role === "user" ? "Client" : "ClariFi"}: ${message.text}`)
+        .map(
+          (message) =>
+            `${message.role === "user" ? "Client" : "ClariFi"}: ${message.text}`,
+        )
         .join("\n"),
       clientNotes: context.clientNotes || "",
       sessionTranscript: context.sessionTranscript || "",
-      handwrittenNoteImage: context.handwrittenNoteImage || ""
+      handwrittenNoteImage: context.handwrittenNoteImage || "",
     },
-    config
+    config,
   );
 
-export const requestRecap = (clientMessages: ClientMessage[], config: ApiConfig, context: SessionContext = {}) =>
+export const requestRecap = (
+  clientMessages: ClientMessage[],
+  config: ApiConfig,
+  context: SessionContext = {},
+) =>
   requestJson<Recap>(
     "/api/recap",
     {
       transcript: clientMessages
-        .map((message) => `${message.role === "user" ? "Client" : "ClariFi"}: ${message.text}`)
+        .map(
+          (message) =>
+            `${message.role === "user" ? "Client" : "ClariFi"}: ${message.text}`,
+        )
         .join("\n"),
       sessionId: context.sessionId,
       clientNotes: context.clientNotes || "",
       sessionTranscript: context.sessionTranscript || "",
-      handwrittenNoteImage: context.handwrittenNoteImage || ""
+      handwrittenNoteImage: context.handwrittenNoteImage || "",
     },
-    config
+    config,
   );
 
 export const requestPreMeetingPrep = (config: ApiConfig, sessionId?: string) =>
   requestJson<PreMeetingPrep>("/api/premeeting", { sessionId }, config);
+
+export const refineProductSuggestions = (
+  instruction: string,
+  catalog: ProductSuggestionCatalog,
+  context: { clientNotes?: string; sessionTranscript?: string } = {},
+) =>
+  authJson<{ catalog: ProductSuggestionCatalog; summary: string }>(
+    "/api/products/refine",
+    {
+      method: "POST",
+      body: JSON.stringify({ instruction, catalog, ...context }),
+    },
+  );
 
 const authJson = async <T>(path: string, options: RequestInit = {}) => {
   const response = await fetch(path, {
@@ -109,12 +158,14 @@ const authJson = async <T>(path: string, options: RequestInit = {}) => {
     credentials: "same-origin",
     headers: {
       "Content-Type": "application/json",
-      ...(options.headers || {})
-    }
+      ...(options.headers || {}),
+    },
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: response.statusText }));
+    const error = await response
+      .json()
+      .catch(() => ({ error: response.statusText }));
     throw new Error(error.error || `Request failed with ${response.status}`);
   }
 
@@ -127,42 +178,62 @@ export const getDemoAccounts = () =>
 export const getCurrentUser = () =>
   authJson<{ user: AuthUser }>("/api/auth/me", { method: "GET" });
 
-type DemoLoginPayload = string | { accountId?: string; email?: string; password?: string };
+type DemoLoginPayload =
+  string | { accountId?: string; email?: string; password?: string };
 
 export const loginDemoAccount = (payload: DemoLoginPayload = "advisor-demo") =>
-  authJson<{ user: AuthUser; token: string; sessionMode: string }>(typeof payload === "string" || "accountId" in payload ? "/api/auth/demo-login" : "/api/auth/login", {
-    method: "POST",
-    body: JSON.stringify(typeof payload === "string" ? { accountId: payload } : payload)
-  });
+  authJson<{ user: AuthUser; token: string; sessionMode: string }>(
+    typeof payload === "string" || "accountId" in payload
+      ? "/api/auth/demo-login"
+      : "/api/auth/login",
+    {
+      method: "POST",
+      body: JSON.stringify(
+        typeof payload === "string" ? { accountId: payload } : payload,
+      ),
+    },
+  );
 
 export const logout = () =>
   authJson<{ ok: boolean }>("/api/auth/logout", { method: "POST" });
 
 export const getCurrentSession = () =>
-  authJson<{ session: SessionRecord; persistenceMode: "postgres" | "memory" }>("/api/sessions/current", { method: "GET" });
+  authJson<{ session: SessionRecord; persistenceMode: "postgres" | "memory" }>(
+    "/api/sessions/current",
+    { method: "GET" },
+  );
 
 export const listSessions = () =>
-  authJson<{ sessions: SessionSummary[]; persistenceMode: "postgres" | "memory" }>("/api/sessions", { method: "GET" });
+  authJson<{
+    sessions: SessionSummary[];
+    persistenceMode: "postgres" | "memory";
+  }>("/api/sessions", { method: "GET" });
 
 export const getSession = (sessionId: string) =>
-  authJson<{ session: SessionRecord; persistenceMode: "postgres" | "memory" }>(`/api/sessions/${sessionId}`, { method: "GET" });
+  authJson<{ session: SessionRecord; persistenceMode: "postgres" | "memory" }>(
+    `/api/sessions/${sessionId}`,
+    { method: "GET" },
+  );
 
-export const patchSessionState = (sessionId: string, patch: Partial<SessionState>) =>
+export const patchSessionState = (
+  sessionId: string,
+  patch: Partial<SessionState>,
+) =>
   authJson<{ session: SessionRecord }>(`/api/sessions/${sessionId}/state`, {
     method: "PATCH",
-    body: JSON.stringify(patch)
+    body: JSON.stringify(patch),
   });
 
 export const createSession = (title: string) =>
   authJson<{ session: SessionRecord }>("/api/sessions", {
     method: "POST",
-    body: JSON.stringify({ title })
+    body: JSON.stringify({ title }),
   });
 
 export const joinSession = (joinCode: string) =>
   authJson<{ session: SessionRecord }>("/api/sessions/join", {
     method: "POST",
-    body: JSON.stringify({ joinCode })
+    body: JSON.stringify({ joinCode }),
   });
 
 export const uploadPolicyDocument = async (sessionId: string, file: File) => {
@@ -171,14 +242,19 @@ export const uploadPolicyDocument = async (sessionId: string, file: File) => {
   const response = await fetch(`/api/policies/${sessionId}/upload`, {
     method: "POST",
     credentials: "same-origin",
-    body: form
+    body: form,
   });
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: response.statusText }));
+    const error = await response
+      .json()
+      .catch(() => ({ error: response.statusText }));
     throw new Error(error.error || `Upload failed with ${response.status}`);
   }
   return response.json() as Promise<{ document: PolicyDocumentSummary }>;
 };
 
 export const searchPolicyDocument = (sessionId: string, query: string) =>
-  authJson<{ evidence: PolicyEvidence[] }>(`/api/policies/${sessionId}/search?q=${encodeURIComponent(query)}`, { method: "GET" });
+  authJson<{ evidence: PolicyEvidence[] }>(
+    `/api/policies/${sessionId}/search?q=${encodeURIComponent(query)}`,
+    { method: "GET" },
+  );

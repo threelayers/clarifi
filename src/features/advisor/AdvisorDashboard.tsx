@@ -6,6 +6,7 @@ import {
   CalendarClock,
   CheckCircle2,
   ChevronDown,
+  Download,
   HeartPulse,
   Home,
   Info,
@@ -18,20 +19,26 @@ import {
   Target,
   TrendingUp,
   UserRound,
+  WandSparkles,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useState } from "react";
 import { myInfoSections } from "@/domain/sessionData";
+import { refineProductSuggestions } from "@/services/clarifiApi";
 import type {
   AdvisorMessage,
   CoverageItem,
+  DecisionOption,
+  ProductSuggestionCatalog,
   Understanding,
 } from "@/types/clarifi";
+import { exportAdvisorReport } from "./exportAdvisorReport";
 
 type AdvisorDashboardProps = {
   messages: AdvisorMessage[];
   coverageItems: CoverageItem[];
   selectedCoverageIds: string[];
+  decisionOptions: DecisionOption[];
   selectedDecisionIds: string[];
   clientNotes: string;
   sessionTranscript: string;
@@ -136,6 +143,10 @@ const profileFields = myInfoSections
   .slice(0, 5);
 
 export function AdvisorDashboard(props: AdvisorDashboardProps) {
+  const [dashboardTab, setDashboardTab] = useState<
+    "profile" | "engagement" | "products"
+  >("profile");
+  const [isExporting, setIsExporting] = useState(false);
   const sessionText = [
     props.sessionTranscript,
     props.clientNotes,
@@ -162,141 +173,509 @@ export function AdvisorDashboard(props: AdvisorDashboardProps) {
   const suggestions = rankSuggestions(sessionText);
   const engagement = buildEngagementSeries(sessionText);
 
+  const handleExport = async () => {
+    setIsExporting(true);
+    try {
+      await exportAdvisorReport({
+        coverageItems: props.coverageItems,
+        selectedCoverageIds: props.selectedCoverageIds,
+        decisionOptions: props.decisionOptions,
+        selectedDecisionIds: props.selectedDecisionIds,
+        coverageProfile: categories.map(({ label, coverage }) => ({
+          label,
+          coverage,
+        })),
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   return (
-    <div className="mx-auto max-w-6xl pb-8">
-      <div className="mb-6">
-        <div className="text-xs font-semibold text-sci">
-          Current consultation
+    <div className="mx-auto max-w-7xl pb-8">
+      <div className="mb-5 flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+        <div>
+          <div className="text-xs font-semibold text-sci">Dashboard</div>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight">
+            Client intelligence
+          </h1>
+          <p className="mt-1 text-sm text-[#667085]">
+            Profile, engagement and product pathways in focused views.
+          </p>
         </div>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight">
-          Client intelligence dashboard
-        </h1>
-        <p className="mt-1 text-sm text-[#667085]">
-          Profile, coverage and session signals consolidated for the advisor.
-        </p>
+        <button
+          type="button"
+          onClick={handleExport}
+          disabled={isExporting}
+          className="flex min-h-10 items-center justify-center gap-2 rounded-lg bg-[#102A43] px-4 text-xs font-semibold text-white shadow-sm transition hover:bg-[#173F5F] disabled:cursor-wait disabled:opacity-60"
+        >
+          <Download size={15} />
+          {isExporting ? "Preparing report..." : "Export report as PDF"}
+        </button>
       </div>
 
-      <section className="mb-5 rounded-lg border border-[#DCE4EA] bg-white p-5">
-        <div className="mb-4 flex items-start justify-between gap-4">
-          <div>
-            <h2 className="font-semibold">Persona and profile</h2>
-            <p className="mt-1 text-xs text-[#667085]">
-              Five high-value fact-finding details.
-            </p>
+      <nav
+        className="mb-5 grid rounded-lg border border-[#DCE4EA] bg-white p-1 sm:grid-cols-3"
+        aria-label="Client intelligence dashboards"
+      >
+        <DashboardTab
+          active={dashboardTab === "profile"}
+          icon={UserRound}
+          label="Persona & profile"
+          onClick={() => setDashboardTab("profile")}
+        />
+        <DashboardTab
+          active={dashboardTab === "engagement"}
+          icon={Target}
+          label="Needs & engagement"
+          onClick={() => setDashboardTab("engagement")}
+        />
+        <DashboardTab
+          active={dashboardTab === "products"}
+          icon={Sparkles}
+          label="Product suggestions"
+          onClick={() => setDashboardTab("products")}
+        />
+      </nav>
+
+      {dashboardTab === "profile" && (
+        <ProfileDashboard categories={categories} />
+      )}
+
+      {dashboardTab === "engagement" && (
+        <EngagementDashboard
+          needs={needs}
+          engagement={engagement}
+          engagedCategories={engagedCategories}
+          coverageProgress={coverageProgress}
+          selected={selected}
+          total={total}
+          understood={understood}
+          attention={attention}
+          {...props}
+        />
+      )}
+
+      {dashboardTab === "products" && (
+        <ProductSuggestionsDashboard
+          suggestions={suggestions}
+          clientNotes={props.clientNotes}
+          sessionTranscript={props.sessionTranscript}
+        />
+      )}
+    </div>
+  );
+}
+
+function DashboardTab({
+  active,
+  icon: Icon,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  icon: LucideIcon;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex min-h-11 items-center justify-center gap-2 rounded-md px-3 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sci ${
+        active
+          ? "bg-[#E8F3FA] text-sci shadow-sm"
+          : "text-[#667085] hover:bg-[#F4F6F8] hover:text-[#344054]"
+      }`}
+    >
+      <Icon size={15} />
+      {label}
+    </button>
+  );
+}
+
+function ProfileDashboard({ categories: items }: { categories: Category[] }) {
+  return (
+    <div className="grid gap-5 xl:grid-cols-[340px_1fr]">
+      <section className="rounded-lg border border-[#DCE4EA] bg-white p-5">
+        <div className="flex items-center gap-3 border-b border-[#E5EAF0] pb-4">
+          <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-[#E8F3FA] text-lg font-bold text-sci">
+            TL
           </div>
-          <span className="rounded-md bg-[#EDF5FC] px-2 py-1 text-[10px] font-bold text-sci">
-            SIMULATED MYINFO
-          </span>
+          <div>
+            <h2 className="font-semibold">Tan Li Wen</h2>
+            <p className="mt-0.5 text-xs text-[#667085]">Individual profile</p>
+          </div>
         </div>
-        <div className="grid gap-2 sm:grid-cols-2 2xl:grid-cols-5">
+        <div className="mt-2 divide-y divide-[#E5EAF0]">
           {profileFields.map((field) => {
             const Icon = profileIcons[field.label];
             return (
-              <div
-                key={field.label}
-                className="min-h-[96px] rounded-lg border border-[#E5EAF0] bg-[#F8FAFB] p-3"
-              >
-                <div className="flex items-center justify-between">
-                  <Icon size={17} className="text-sci" />
-                  <span className="text-[9px] font-bold uppercase text-[#8A94A3]">
-                    {field.source}
-                  </span>
+              <div key={field.label} className="flex items-center gap-3 py-3">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[#F0F5F8] text-sci">
+                  <Icon size={16} />
                 </div>
-                <div className="mt-3 text-[10px] font-semibold uppercase text-[#667085]">
-                  {field.label}
-                </div>
-                <div className="mt-1 text-xs font-semibold leading-4 text-[#1D2939]">
-                  {field.value}
+                <div className="min-w-0">
+                  <div className="text-[10px] font-semibold uppercase text-[#667085]">
+                    {field.label}
+                  </div>
+                  <div className="mt-0.5 truncate text-xs font-semibold text-[#1D2939]">
+                    {field.value}
+                  </div>
                 </div>
               </div>
             );
           })}
         </div>
+        <div className="mt-4 rounded-lg bg-[#F4F7F9] px-3 py-2.5 text-[10px] leading-4 text-[#667085]">
+          Simulated MyInfo and client-declared profile used for this POC.
+        </div>
       </section>
 
-      <div className="mb-5 grid gap-5 2xl:grid-cols-[1.05fr_.95fr]">
-        <CoveragePortfolio categories={categories} />
-        <ProductPathways suggestions={suggestions} />
-      </div>
+      <CoveragePortfolio categories={items} />
+    </div>
+  );
+}
 
-      <section className="mb-5 rounded-lg border border-[#DCE4EA] bg-white p-5">
-        <div className="mb-4 flex items-end justify-between gap-4">
-          <div>
-            <h2 className="font-semibold">Session KPIs</h2>
-            <p className="mt-1 text-xs text-[#667085]">
-              Qualitative needs and live engagement signals.
-            </p>
-          </div>
-          <span className="text-[10px] font-semibold uppercase text-[#667085]">
-            POC session model
-          </span>
+type EngagementDashboardProps = AdvisorDashboardProps & {
+  needs: string[];
+  engagement: number[];
+  engagedCategories: Category[];
+  coverageProgress: number;
+  selected: number;
+  total: number;
+  understood: number;
+  attention: number;
+};
+
+function EngagementDashboard({
+  needs,
+  engagement,
+  engagedCategories,
+  coverageProgress,
+  selected,
+  total,
+  understood,
+  attention,
+  learningPoints,
+  coverageItems,
+  selectedCoverageIds,
+  sessionTranscript,
+  clientNotes,
+  handwrittenNoteImage,
+}: EngagementDashboardProps) {
+  const averageRelativity = Math.round(
+    engagement.reduce((sum, value) => sum + value, 0) /
+      Math.max(engagement.length, 1),
+  );
+  const spokenWords = sessionTranscript
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length;
+  const averageDuration = spokenWords
+    ? Math.max(1, Math.round((spokenWords / 130) * 10) / 10)
+    : 18.4;
+
+  return (
+    <div className="space-y-5">
+      <section className="rounded-lg border border-[#DCE4EA] bg-white p-5">
+        <div className="mb-4">
+          <h2 className="font-semibold">Client needs & engagement</h2>
+          <p className="mt-1 text-xs text-[#667085]">
+            Conversation priorities and understanding across relevant policy
+            areas.
+          </p>
         </div>
-        <div className="grid gap-5 2xl:grid-cols-[.8fr_1.2fr]">
+        <div className="grid gap-4 2xl:grid-cols-[1.2fr_.8fr]">
           <div>
             <div className="mb-2 text-[10px] font-bold uppercase text-[#667085]">
-              Top 3 needs
+              Top 3 needs statement
             </div>
-            <div className="grid gap-2 sm:grid-cols-3 2xl:grid-cols-1">
+            <div className="grid gap-2 sm:grid-cols-3">
               {needs.map((need, index) => (
                 <div
                   key={need}
-                  className="flex items-center gap-3 rounded-lg border border-[#E5EAF0] bg-[#F8FAFB] p-3"
+                  className="min-h-[112px] rounded-lg border border-[#E5EAF0] bg-[#F8FAFB] p-3"
                 >
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-white text-xs font-bold text-sci shadow-sm">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-md bg-white text-xs font-bold text-sci shadow-sm">
                     {index + 1}
                   </span>
-                  <span className="text-xs font-semibold leading-4">
+                  <div className="mt-3 text-xs font-semibold leading-5 text-[#1D2939]">
                     {need}
-                  </span>
+                  </div>
                 </div>
               ))}
             </div>
           </div>
-          <EngagementChart points={engagement} />
+          <div>
+            <div className="mb-2 text-[10px] font-bold uppercase text-[#667085]">
+              Engagement level
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2 2xl:grid-cols-1">
+              <MetricCard
+                label="Avg. conversation relativity"
+                value={`${averageRelativity}%`}
+                detail="Relevant session content"
+                icon={Target}
+              />
+              <MetricCard
+                label="Avg. conversation duration"
+                value={`${averageDuration} min`}
+                detail="Estimated from captured speech"
+                icon={CalendarClock}
+              />
+            </div>
+          </div>
         </div>
       </section>
 
-      <div className="mb-5 grid gap-5 2xl:grid-cols-2">
+      <div className="grid gap-5 xl:grid-cols-[.8fr_1.2fr]">
+        <section className="rounded-lg border border-[#DCE4EA] bg-white p-5">
+          <h2 className="font-semibold">Engagement over time</h2>
+          <p className="mt-1 text-xs text-[#667085]">
+            Conversation relativity against duration.
+          </p>
+          <div className="mt-4">
+            <EngagementChart points={engagement} />
+          </div>
+        </section>
         <PriorityMap categories={categories} />
-        <UnderstandingChart categories={engagedCategories} />
       </div>
 
-      <div className="grid gap-5 2xl:grid-cols-[1.15fr_.85fr]">
+      <div className="grid gap-5 xl:grid-cols-2">
+        <UnderstandingChart categories={engagedCategories} />
         <FollowUpAreas
-          learningPoints={props.learningPoints}
-          coverageItems={props.coverageItems}
-          selectedIds={props.selectedCoverageIds}
+          learningPoints={learningPoints}
+          coverageItems={coverageItems}
+          selectedIds={selectedCoverageIds}
         />
-        <div>
-          <section className="rounded-lg border border-[#DCE4EA] bg-white p-5">
-            <h2 className="font-semibold">Session progress</h2>
-            <div className="mt-4 flex items-center gap-4">
-              <Ring value={coverageProgress} />
-              <div>
-                <div className="text-sm font-semibold">Discussion coverage</div>
-                <p className="mt-1 text-xs leading-5 text-[#667085]">
-                  {selected === total
-                    ? "All planned topics are marked covered."
-                    : `${total - selected} planned topics still need confirmation.`}
-                </p>
-              </div>
+      </div>
+
+      <section className="rounded-lg border border-[#DCE4EA] bg-white p-5">
+        <h2 className="font-semibold">Session progress</h2>
+        <div className="mt-4 grid gap-5 xl:grid-cols-[auto_1fr] xl:items-start">
+          <div className="flex items-center gap-4">
+            <Ring value={coverageProgress} />
+            <div>
+              <div className="text-sm font-semibold">Discussion coverage</div>
+              <p className="mt-1 text-xs leading-5 text-[#667085]">
+                {selected === total
+                  ? "All planned topics are marked covered."
+                  : `${total - selected} planned topics still need confirmation.`}
+              </p>
             </div>
-            <div className="mt-4 grid grid-cols-2 gap-2">
+          </div>
+          <div>
+            <div className="grid grid-cols-2 gap-2">
               <Signal label="Understood" value={understood} tone="green" />
               <Signal label="Needs attention" value={attention} tone="amber" />
             </div>
             <ProgressSources
               selected={selected}
               total={total}
-              hasTranscript={Boolean(props.sessionTranscript.trim())}
-              hasNotes={Boolean(
-                props.clientNotes.trim() || props.handwrittenNoteImage,
-              )}
-              learningPointCount={props.learningPoints.length}
+              hasTranscript={Boolean(sessionTranscript.trim())}
+              hasNotes={Boolean(clientNotes.trim() || handwrittenNoteImage)}
+              learningPointCount={learningPoints.length}
             />
-          </section>
+          </div>
         </div>
+      </section>
+    </div>
+  );
+}
+
+function MetricCard({
+  label,
+  value,
+  detail,
+  icon: Icon,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  icon: LucideIcon;
+}) {
+  return (
+    <div className="flex min-h-[92px] items-center gap-3 rounded-lg border border-[#D9E4EC] bg-[#F4F8FB] p-3">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-sci shadow-sm">
+        <Icon size={17} />
       </div>
+      <div>
+        <div className="text-[10px] font-semibold text-[#667085]">{label}</div>
+        <div className="mt-0.5 text-xl font-bold text-[#102A43]">{value}</div>
+        <div className="mt-0.5 text-[9px] text-[#8A94A3]">{detail}</div>
+      </div>
+    </div>
+  );
+}
+
+const productCatalog: ProductSuggestionCatalog = {
+  life: [
+    { name: "SecureLife Protect", intent: "Term protection" },
+    { name: "WholeLife Assure", intent: "Lifetime protection" },
+    { name: "LifeGuard Plus", intent: "Family continuity" },
+  ],
+  investment: [
+    { name: "WealthGrow Advantage", intent: "Growth focused" },
+    { name: "FlexInvest Choice", intent: "Balanced exposure" },
+    { name: "FutureLink Invest", intent: "Long-term participation" },
+  ],
+  critical: [
+    { name: "CriticalCare Shield", intent: "Comprehensive support" },
+    { name: "HealthWatch CI", intent: "Early-stage support" },
+    { name: "LifeCure Guardian", intent: "Advanced protection" },
+  ],
+  shield: [
+    { name: "MediShield Life", intent: "Basic hospital cover" },
+    { name: "HealthConnect Plus", intent: "Enhanced hospital cover" },
+    { name: "TotalShield Premier", intent: "Private hospital option" },
+  ],
+  retirement: [
+    { name: "RetireReady Plan", intent: "Regular savings" },
+    { name: "GoldenYears Income", intent: "Retirement payout" },
+    { name: "WealthForLife Annuity", intent: "Lifetime income" },
+  ],
+};
+
+function ProductSuggestionsDashboard({
+  suggestions,
+  clientNotes,
+  sessionTranscript,
+}: {
+  suggestions: Category[];
+  clientNotes: string;
+  sessionTranscript: string;
+}) {
+  const [instruction, setInstruction] = useState("");
+  const [catalog, setCatalog] = useState(productCatalog);
+  const [updateMessage, setUpdateMessage] = useState("");
+  const [isRegenerating, setIsRegenerating] = useState(false);
+  const orderedCategories = [
+    ...suggestions,
+    ...categories.filter(
+      (category) => !suggestions.some((item) => item.id === category.id),
+    ),
+  ];
+
+  const regenerate = async () => {
+    const request = instruction.trim();
+    if (!request) return;
+    setIsRegenerating(true);
+    setUpdateMessage("");
+    try {
+      const result = await refineProductSuggestions(request, catalog, {
+        clientNotes,
+        sessionTranscript,
+      });
+      setCatalog(result.catalog);
+      setUpdateMessage(result.summary);
+      setInstruction("");
+    } catch (error) {
+      setUpdateMessage(
+        error instanceof Error
+          ? error.message
+          : "Product suggestions could not be refreshed.",
+      );
+    } finally {
+      setIsRegenerating(false);
+    }
+  };
+
+  return (
+    <div className="space-y-5">
+      <section className="rounded-lg border border-[#C9D8E3] bg-white p-4 shadow-sm">
+        <div className="flex items-center gap-2 text-xs font-semibold text-[#344054]">
+          <WandSparkles size={16} className="text-sci" /> Refine product
+          suggestions
+        </div>
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+          <input
+            value={instruction}
+            onChange={(event) => setInstruction(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") void regenerate();
+            }}
+            placeholder="e.g. Replace LifeGuard Plus with FamilyGuard Term"
+            className="min-h-11 min-w-0 flex-1 rounded-lg border border-[#C9D3DC] bg-[#F8FAFB] px-3 text-sm outline-none focus:border-sci focus:ring-4 focus:ring-[#D6EBFF]"
+          />
+          <button
+            type="button"
+            onClick={() => void regenerate()}
+            disabled={!instruction.trim() || isRegenerating}
+            className="flex min-h-11 items-center justify-center gap-2 rounded-lg bg-sci px-4 text-xs font-semibold text-white transition hover:bg-[#075782] disabled:cursor-not-allowed disabled:opacity-45"
+          >
+            <Sparkles size={15} />
+            {isRegenerating ? "Regenerating..." : "Regenerate"}
+          </button>
+        </div>
+        {updateMessage && (
+          <p className="mt-2 text-[10px] font-medium text-[#248A3D]">
+            {updateMessage}
+          </p>
+        )}
+      </section>
+
+      <section className="rounded-lg border border-[#DCE4EA] bg-white p-5">
+        <div className="mb-4">
+          <h2 className="font-semibold">Product suggestions</h2>
+          <p className="mt-1 text-xs text-[#667085]">
+            Icon-categorised pathways based on conversation context and advisor
+            input.
+          </p>
+          <span className="mt-2 inline-flex rounded-md bg-[#F1EDFF] px-2 py-1 text-[9px] font-bold uppercase text-[#6F42C1]">
+            Illustrative POC catalog
+          </span>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-5">
+          {orderedCategories.map((category, categoryIndex) => {
+            const Icon = category.icon;
+            return (
+              <div
+                key={category.id}
+                className="overflow-hidden rounded-lg border border-[#DCE4EA] bg-[#F8FAFB]"
+              >
+                <div className="border-b border-[#DCE4EA] bg-white p-3">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#E8F3FA] text-sci">
+                    <Icon size={18} />
+                  </div>
+                  <div className="mt-2 text-xs font-semibold leading-4">
+                    {category.label}
+                  </div>
+                  {categoryIndex < 3 && (
+                    <div className="mt-1 text-[9px] font-bold uppercase text-sci">
+                      Session priority {categoryIndex + 1}
+                    </div>
+                  )}
+                </div>
+                <div className="divide-y divide-[#E5EAF0] p-2">
+                  {catalog[category.id].map((product) => (
+                    <div
+                      key={product.name}
+                      className="flex min-h-[68px] gap-2 p-2"
+                    >
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-white text-[#667085] shadow-sm">
+                        <Icon size={15} />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-[11px] font-semibold leading-4 text-[#1D2939]">
+                          {product.name}
+                        </div>
+                        <div className="mt-1 text-[9px] leading-3 text-[#667085]">
+                          {product.intent}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <p className="mt-4 text-[10px] leading-4 text-[#667085]">
+          Product pathways are discussion support only. The licensed advisor
+          remains responsible for suitability and recommendations.
+        </p>
+      </section>
     </div>
   );
 }

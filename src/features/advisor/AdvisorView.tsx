@@ -100,7 +100,7 @@ type Props = {
 
 export function AdvisorView(props: Props) {
   const [tab, setTab] = useState<"dashboard" | "capture" | "copilot">(
-    "dashboard",
+    "copilot",
   );
   const [input, setInput] = useState("");
   const [policyQuery, setPolicyQuery] = useState("income hospital");
@@ -174,94 +174,98 @@ export function AdvisorView(props: Props) {
 
   return (
     <div className="flex min-h-0 flex-1 bg-[#F4F6F8]">
-      <div
-        ref={railRef}
-        className="relative hidden shrink-0 xl:block"
-        style={{ width: railWidth }}
-      >
-        <aside className="flex h-full w-full flex-col border-r border-[#DCE4EA] bg-[#EAF0F4]">
-          <div className="border-b border-[#DCE4EA] px-5 py-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-sci text-sm font-bold text-white">
-                TL
-              </div>
-              <div className="min-w-0">
-                <div className="truncate text-sm font-semibold">
-                  {profile.name}
-                </div>
-                <div className="truncate text-xs text-[#667085]">
-                  {profile.role}
-                </div>
-              </div>
-            </div>
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              {["First-time", "Freelance", "Hospital cover"].map((item) => (
-                <span key={item} className="apple-chip text-[10px]">
-                  {item}
-                </span>
-              ))}
-            </div>
-          </div>
-          <div className="min-h-0 flex-1 overflow-y-auto p-4">
-            <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-[#667085]">
-              Session capture
-            </div>
-            <AdvisorSessionCapture
-              clientNotes={props.clientNotes}
-              onClientNotesChange={props.onClientNotesChange}
-              sessionTranscript={props.sessionTranscript}
-              onSessionTranscriptChange={props.onSessionTranscriptChange}
-              handwrittenNoteImage={props.handwrittenNoteImage}
-              onHandwrittenNoteImageChange={props.onHandwrittenNoteImageChange}
-            />
-            <div className="mt-4">
-              <AdvisorPolicyViewer
-                {...props}
-                query={policyQuery}
-                onQuery={setPolicyQuery}
-              />
-            </div>
-          </div>
-        </aside>
+      {tab !== "dashboard" && (
         <div
-          role="separator"
-          tabIndex={0}
-          aria-label="Resize session capture sidebar"
-          aria-orientation="vertical"
-          aria-valuemin={ADVISOR_RAIL_MIN_WIDTH}
-          aria-valuemax={advisorRailMaxWidth()}
-          aria-valuenow={railWidth}
-          className={`absolute right-[-11px] top-1/2 z-30 flex h-16 w-5 -translate-y-1/2 cursor-col-resize items-center justify-center rounded-r-md border border-l-0 border-[#C8D4DD] bg-white text-[#74818C] shadow-sm outline-none transition hover:border-sci hover:bg-[#F2F8FC] hover:text-sci focus-visible:border-sci focus-visible:ring-2 focus-visible:ring-sci ${
-            isResizingRail ? "border-sci bg-[#E5F2FA] text-sci" : ""
-          }`}
-          onPointerDown={(event) => {
-            event.preventDefault();
-            setIsResizingRail(true);
-          }}
-          onDoubleClick={() => persistRailWidth(ADVISOR_RAIL_DEFAULT_WIDTH)}
-          onKeyDown={(event) => {
-            if (event.key === "ArrowLeft") {
-              event.preventDefault();
-              persistRailWidth(railWidth - 24);
-            }
-            if (event.key === "ArrowRight") {
-              event.preventDefault();
-              persistRailWidth(railWidth + 24);
-            }
-            if (event.key === "Home") {
-              event.preventDefault();
-              persistRailWidth(ADVISOR_RAIL_MIN_WIDTH);
-            }
-            if (event.key === "End") {
-              event.preventDefault();
-              persistRailWidth(advisorRailMaxWidth());
-            }
-          }}
-          title="Drag to resize the session sidebar. Double-click to reset."
+          ref={railRef}
+          className="relative hidden shrink-0 xl:block"
+          style={{ width: railWidth }}
         >
-          <GripVertical size={14} />
+          <aside className="flex h-full w-full flex-col border-r border-[#DCE4EA] bg-[#EAF0F4]">
+            <div className="border-b border-[#DCE4EA] px-5 py-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-sci text-sm font-bold text-white">
+                  TL
+                </div>
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-semibold">
+                    {profile.name}
+                  </div>
+                  <div className="truncate text-xs text-[#667085]">
+                    {profile.role}
+                  </div>
+                </div>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {["First-time", "Freelance", "Hospital cover"].map((item) => (
+                  <span key={item} className="apple-chip text-[10px]">
+                    {item}
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto p-4">
+              <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-[#667085]">
+                Session capture
+              </div>
+              <AdvisorSessionCapture
+                clientNotes={props.clientNotes}
+                onClientNotesChange={props.onClientNotesChange}
+                sessionTranscript={props.sessionTranscript}
+                onSessionTranscriptChange={props.onSessionTranscriptChange}
+                handwrittenNoteImage={props.handwrittenNoteImage}
+                onHandwrittenNoteImageChange={
+                  props.onHandwrittenNoteImageChange
+                }
+              />
+              <div className="mt-4">
+                <AdvisorPolicyViewer
+                  {...props}
+                  query={policyQuery}
+                  onQuery={setPolicyQuery}
+                />
+              </div>
+            </div>
+          </aside>
+          <div
+            role="separator"
+            tabIndex={0}
+            aria-label="Resize session capture sidebar"
+            aria-orientation="vertical"
+            aria-valuemin={ADVISOR_RAIL_MIN_WIDTH}
+            aria-valuemax={advisorRailMaxWidth()}
+            aria-valuenow={railWidth}
+            className={`absolute right-[-11px] top-1/2 z-30 flex h-16 w-5 -translate-y-1/2 cursor-col-resize items-center justify-center rounded-r-md border border-l-0 border-[#C8D4DD] bg-white text-[#74818C] shadow-sm outline-none transition hover:border-sci hover:bg-[#F2F8FC] hover:text-sci focus-visible:border-sci focus-visible:ring-2 focus-visible:ring-sci ${
+              isResizingRail ? "border-sci bg-[#E5F2FA] text-sci" : ""
+            }`}
+            onPointerDown={(event) => {
+              event.preventDefault();
+              setIsResizingRail(true);
+            }}
+            onDoubleClick={() => persistRailWidth(ADVISOR_RAIL_DEFAULT_WIDTH)}
+            onKeyDown={(event) => {
+              if (event.key === "ArrowLeft") {
+                event.preventDefault();
+                persistRailWidth(railWidth - 24);
+              }
+              if (event.key === "ArrowRight") {
+                event.preventDefault();
+                persistRailWidth(railWidth + 24);
+              }
+              if (event.key === "Home") {
+                event.preventDefault();
+                persistRailWidth(ADVISOR_RAIL_MIN_WIDTH);
+              }
+              if (event.key === "End") {
+                event.preventDefault();
+                persistRailWidth(advisorRailMaxWidth());
+              }
+            }}
+            title="Drag to resize the session sidebar. Double-click to reset."
+          >
+            <GripVertical size={14} />
+          </div>
         </div>
-      </div>
+      )}
 
       <main className="flex min-w-0 flex-1 flex-col">
         <div className="flex shrink-0 items-center border-b border-[#DCE4EA] bg-white px-5 py-3">
@@ -284,7 +288,7 @@ export function AdvisorView(props: Props) {
               active={tab === "copilot"}
               onClick={() => setTab("copilot")}
               icon={<MessageSquare size={15} />}
-              label="Copilot"
+              label="Workspace"
             />
           </div>
           <div className="ml-auto hidden items-center gap-2 text-xs font-semibold text-[#667085] sm:flex">
@@ -335,41 +339,43 @@ export function AdvisorView(props: Props) {
         )}
       </main>
 
-      <aside className="hidden w-[350px] shrink-0 flex-col border-l border-[#DCE4EA] bg-white lg:flex">
-        <div className="border-b border-[#DCE4EA] px-5 py-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-base font-semibold">Session actions</h2>
-            {props.recapApproved && (
-              <span className="flex items-center gap-1 text-[10px] font-bold text-[#248A3D]">
-                <Check size={12} /> Approved
-              </span>
-            )}
+      {tab !== "dashboard" && (
+        <aside className="hidden w-[350px] shrink-0 flex-col border-l border-[#DCE4EA] bg-white lg:flex">
+          <div className="border-b border-[#DCE4EA] px-5 py-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-semibold">Session actions</h2>
+              {props.recapApproved && (
+                <span className="flex items-center gap-1 text-[10px] font-bold text-[#248A3D]">
+                  <Check size={12} /> Approved
+                </span>
+              )}
+            </div>
+            <p className="mt-1 text-xs text-[#667085]">
+              Coverage, choices and final recap.
+            </p>
           </div>
-          <p className="mt-1 text-xs text-[#667085]">
-            Coverage, choices and final recap.
-          </p>
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto p-4">
-          <CoverageChecklist
-            items={props.coverageItems}
-            selectedIds={props.selectedCoverageIds}
-            onToggle={props.onToggleCoverage}
-          />
-          <DecisionMenu
-            options={props.decisionOptions}
-            selectedIds={props.selectedDecisionIds}
-            selectedOptions={selectedDecisions}
-            onToggle={props.onToggleDecision}
-          />
-          <RecapActions
-            recap={props.recap}
-            loading={props.recapLoading}
-            approved={props.recapApproved}
-            onGenerate={props.onGenerateRecap}
-            onApprove={props.onApproveRecap}
-          />
-        </div>
-      </aside>
+          <div className="min-h-0 flex-1 overflow-y-auto p-4">
+            <CoverageChecklist
+              items={props.coverageItems}
+              selectedIds={props.selectedCoverageIds}
+              onToggle={props.onToggleCoverage}
+            />
+            <DecisionMenu
+              options={props.decisionOptions}
+              selectedIds={props.selectedDecisionIds}
+              selectedOptions={selectedDecisions}
+              onToggle={props.onToggleDecision}
+            />
+            <RecapActions
+              recap={props.recap}
+              loading={props.recapLoading}
+              approved={props.recapApproved}
+              onGenerate={props.onGenerateRecap}
+              onApprove={props.onApproveRecap}
+            />
+          </div>
+        </aside>
+      )}
     </div>
   );
 }

@@ -16,7 +16,10 @@ type ClientReply = {
   detected: boolean;
   misunderstanding: string;
   evidenceIds: string[];
-  understanding: Array<{ point: string; status: "covered" | "not_covered" | "action" }>;
+  understanding: Array<{
+    point: string;
+    status: "covered" | "not_covered" | "action";
+  }>;
   teachBack: string;
 };
 
@@ -38,6 +41,16 @@ type PreMeetingPrep = {
   clientWidget: { title: string; bullets: string[] };
 };
 
+type ProductSuggestionCatalog = Record<
+  string,
+  Array<{ name: string; intent: string }>
+>;
+
+type ProductSuggestionResult = {
+  catalog: ProductSuggestionCatalog;
+  summary: string;
+};
+
 type JsonSchema = {
   type: "object";
   properties: Record<string, unknown>;
@@ -55,7 +68,8 @@ const adviceBoundary = `ClariFi is an educational clarity tool, not a financial 
 const adviceIntentPattern =
   /\b(should i|should we|what should i|do you recommend|recommend|recommendation|advise|advice|best plan|better plan|which plan|which policy|buy|purchase|cancel|switch|upgrade|downgrade|add a rider|choose|worth it|suitable|right for me|need to get|must i get)\b/i;
 
-const includesAdviceRequest = (history: OpenAIHistory) => adviceIntentPattern.test(history[history.length - 1]?.content || "");
+const includesAdviceRequest = (history: OpenAIHistory) =>
+  adviceIntentPattern.test(history[history.length - 1]?.content || "");
 
 const trimContext = (value = "", maxLength = 2800) => {
   const normalized = value.trim();
@@ -66,7 +80,9 @@ const trimContext = (value = "", maxLength = 2800) => {
 const sessionContextText = (context: PromptContext = {}) => {
   const clientNotes = trimContext(context.clientNotes);
   const sessionTranscript = trimContext(context.sessionTranscript, 5000);
-  const hasHandwriting = Boolean(context.handwrittenNoteImage?.startsWith("data:image/"));
+  const hasHandwriting = Boolean(
+    context.handwrittenNoteImage?.startsWith("data:image/"),
+  );
   const policyEvidence = trimContext(context.policyEvidence, 6000);
 
   return `Live session context:
@@ -92,7 +108,12 @@ const cleanJson = <T>(raw: string): T => {
   }
 };
 
-const extractOutputText = (data: { output_text?: string; output?: Array<{ content?: Array<{ type?: string; text?: string; refusal?: string }> }> }) => {
+const extractOutputText = (data: {
+  output_text?: string;
+  output?: Array<{
+    content?: Array<{ type?: string; text?: string; refusal?: string }>;
+  }>;
+}) => {
   if (data.output_text) return data.output_text.trim();
 
   const text = (data.output || [])
@@ -113,22 +134,23 @@ const callOpenAI = async (opts: {
   schema: JsonSchema;
   context?: PromptContext;
 }) => {
-  const handwritingInput = opts.context?.handwrittenNoteImage?.startsWith("data:image/")
+  const handwritingInput = opts.context?.handwrittenNoteImage?.startsWith(
+    "data:image/",
+  )
     ? [
         {
           role: "user",
           content: [
             {
               type: "input_text",
-              text:
-                "The attached image is the client's handwritten note from the iPad writing pad. Interpret it only as client note-taking context; do not treat it as policy evidence."
+              text: "The attached image is the client's handwritten note from the iPad writing pad. Interpret it only as client note-taking context; do not treat it as policy evidence.",
             },
             {
               type: "input_image",
-              image_url: opts.context.handwrittenNoteImage
-            }
-          ]
-        }
+              image_url: opts.context.handwrittenNoteImage,
+            },
+          ],
+        },
       ]
     : [];
 
@@ -136,7 +158,7 @@ const callOpenAI = async (opts: {
     method: "POST",
     headers: {
       Authorization: `Bearer ${opts.apiKey}`,
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
     },
     body: JSON.stringify({
       model: opts.model || DEFAULT_OPENAI_MODEL,
@@ -145,18 +167,18 @@ const callOpenAI = async (opts: {
         ...handwritingInput,
         ...opts.history.map((message) => ({
           role: message.role,
-          content: message.content
-        }))
+          content: message.content,
+        })),
       ],
       text: {
         format: {
           type: "json_schema",
           name: opts.schemaName,
           strict: true,
-          schema: opts.schema
-        }
-      }
-    })
+          schema: opts.schema,
+        },
+      },
+    }),
   });
 
   if (!response.ok) {
@@ -194,7 +216,10 @@ ${sessionContextText(context)}
 
 Return only JSON matching the schema.`;
 
-export const advisorSystemPrompt = (clientTranscript: string, context: PromptContext = {}) =>
+export const advisorSystemPrompt = (
+  clientTranscript: string,
+  context: PromptContext = {},
+) =>
   `You are ClariFi's private advisor copilot, speaking to the financial representative, not the client. Help them serve ${profile.name} responsibly and keep the human in control. Be concise and practical.
 
 ${adviceBoundary}
@@ -224,7 +249,7 @@ const clientSchema: JsonSchema = {
     misunderstanding: { type: "string" },
     evidenceIds: {
       type: "array",
-      items: { type: "string", enum: clauses.map((clause) => clause.id) }
+      items: { type: "string", enum: clauses.map((clause) => clause.id) },
     },
     understanding: {
       type: "array",
@@ -232,44 +257,70 @@ const clientSchema: JsonSchema = {
         type: "object",
         properties: {
           point: { type: "string" },
-          status: { type: "string", enum: ["covered", "not_covered", "action"] }
+          status: {
+            type: "string",
+            enum: ["covered", "not_covered", "action"],
+          },
         },
         required: ["point", "status"],
-        additionalProperties: false
-      }
+        additionalProperties: false,
+      },
     },
-    teachBack: { type: "string" }
+    teachBack: { type: "string" },
   },
-  required: ["reply", "detected", "misunderstanding", "evidenceIds", "understanding", "teachBack"],
-  additionalProperties: false
+  required: [
+    "reply",
+    "detected",
+    "misunderstanding",
+    "evidenceIds",
+    "understanding",
+    "teachBack",
+  ],
+  additionalProperties: false,
 };
 
-const withAdviceRedirect = <T extends { reply?: string; detected?: boolean; misunderstanding?: string; understanding?: Array<{ point: string; status: string }>; teachBack?: string }>(
+const withAdviceRedirect = <
+  T extends {
+    reply?: string;
+    detected?: boolean;
+    misunderstanding?: string;
+    understanding?: Array<{ point: string; status: string }>;
+    teachBack?: string;
+  },
+>(
   result: T,
-  history: OpenAIHistory
+  history: OpenAIHistory,
 ) => {
   if (!includesAdviceRequest(history)) return result;
 
   const redirect =
     "I can explain the policy wording and general insurance concepts, but I cannot tell you what to buy, change, cancel, or choose. Please discuss suitability and recommendations with your licensed advisor/agent.";
 
-  const alreadyRedirects = /\b(cannot|can't|can’t|licensed advisor|advisor\/agent|human advisor|agent)\b/i.test(result.reply || "");
+  const alreadyRedirects =
+    /\b(cannot|can't|can’t|licensed advisor|advisor\/agent|human advisor|agent)\b/i.test(
+      result.reply || "",
+    );
 
   return {
     ...result,
     detected: true,
-    misunderstanding: result.misunderstanding || "This asks for advice or a recommendation, which ClariFi must route to the human advisor/agent.",
+    misunderstanding:
+      result.misunderstanding ||
+      "This asks for advice or a recommendation, which ClariFi must route to the human advisor/agent.",
     reply: alreadyRedirects
       ? result.reply
       : `${redirect}\n\n${result.reply || ""}`.trim(),
     understanding: [
       ...(result.understanding || []),
       {
-        point: "ClariFi provides neutral knowledge and policy clarification, while advice and suitability decisions must go to the licensed advisor/agent.",
-        status: "action"
-      }
+        point:
+          "ClariFi provides neutral knowledge and policy clarification, while advice and suitability decisions must go to the licensed advisor/agent.",
+        status: "action",
+      },
     ],
-    teachBack: result.teachBack || "What is the difference between policy knowledge and advice you should ask your advisor/agent for?"
+    teachBack:
+      result.teachBack ||
+      "What is the difference between policy knowledge and advice you should ask your advisor/agent for?",
   };
 };
 
@@ -277,14 +328,20 @@ const normalizeClientReply = (result: ClientReply): ClientReply => ({
   ...result,
   understanding: result.understanding.map((item) => {
     const point = item.point.toLowerCase();
-    if (/\b(ask|discuss|clarify|advisor|agent|next step|question)\b/.test(point)) {
+    if (
+      /\b(ask|discuss|clarify|advisor|agent|next step|question)\b/.test(point)
+    ) {
       return { ...item, status: "action" };
     }
-    if (/\b(does not|doesn't|not covered|not include|not included|no lump|excluded|exclusion|not pay|lost income|loss of income|salary|earnings)\b/.test(point)) {
+    if (
+      /\b(does not|doesn't|not covered|not include|not included|no lump|excluded|exclusion|not pay|lost income|loss of income|salary|earnings)\b/.test(
+        point,
+      )
+    ) {
       return { ...item, status: "not_covered" };
     }
     return item;
-  })
+  }),
 });
 
 const advisorSchema: JsonSchema = {
@@ -297,15 +354,15 @@ const advisorSchema: JsonSchema = {
         type: "object",
         properties: {
           source: { type: "string" },
-          quote: { type: "string" }
+          quote: { type: "string" },
         },
         required: ["source", "quote"],
-        additionalProperties: false
-      }
-    }
+        additionalProperties: false,
+      },
+    },
   },
   required: ["reply", "citations"],
-  additionalProperties: false
+  additionalProperties: false,
 };
 
 const recapSchema: JsonSchema = {
@@ -313,10 +370,10 @@ const recapSchema: JsonSchema = {
   properties: {
     covered: { type: "array", items: { type: "string" } },
     notCovered: { type: "array", items: { type: "string" } },
-    followUps: { type: "array", items: { type: "string" } }
+    followUps: { type: "array", items: { type: "string" } },
   },
   required: ["covered", "notCovered", "followUps"],
-  additionalProperties: false
+  additionalProperties: false,
 };
 
 const preMeetingSchema: JsonSchema = {
@@ -329,17 +386,103 @@ const preMeetingSchema: JsonSchema = {
       type: "object",
       properties: {
         title: { type: "string" },
-        bullets: { type: "array", items: { type: "string" } }
+        bullets: { type: "array", items: { type: "string" } },
       },
       required: ["title", "bullets"],
-      additionalProperties: false
-    }
+      additionalProperties: false,
+    },
   },
-  required: ["advisorBrief", "likelyConcerns", "suggestedQuestions", "clientWidget"],
-  additionalProperties: false
+  required: [
+    "advisorBrief",
+    "likelyConcerns",
+    "suggestedQuestions",
+    "clientWidget",
+  ],
+  additionalProperties: false,
 };
 
-export const generateClientReply = async (apiKey: string, history: OpenAIHistory, model?: string, context: PromptContext = {}) =>
+const productSuggestionsSchema: JsonSchema = {
+  type: "object",
+  properties: {
+    catalog: {
+      type: "object",
+      properties: {
+        life: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              name: { type: "string" },
+              intent: { type: "string" },
+            },
+            required: ["name", "intent"],
+            additionalProperties: false,
+          },
+        },
+        investment: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              name: { type: "string" },
+              intent: { type: "string" },
+            },
+            required: ["name", "intent"],
+            additionalProperties: false,
+          },
+        },
+        critical: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              name: { type: "string" },
+              intent: { type: "string" },
+            },
+            required: ["name", "intent"],
+            additionalProperties: false,
+          },
+        },
+        shield: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              name: { type: "string" },
+              intent: { type: "string" },
+            },
+            required: ["name", "intent"],
+            additionalProperties: false,
+          },
+        },
+        retirement: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              name: { type: "string" },
+              intent: { type: "string" },
+            },
+            required: ["name", "intent"],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ["life", "investment", "critical", "shield", "retirement"],
+      additionalProperties: false,
+    },
+    summary: { type: "string" },
+  },
+  required: ["catalog", "summary"],
+  additionalProperties: false,
+};
+
+export const generateClientReply = async (
+  apiKey: string,
+  history: OpenAIHistory,
+  model?: string,
+  context: PromptContext = {},
+) =>
   withAdviceRedirect(
     normalizeClientReply(
       cleanJson<ClientReply>(
@@ -350,11 +493,11 @@ export const generateClientReply = async (apiKey: string, history: OpenAIHistory
           schemaName: "clarifi_client_reply",
           schema: clientSchema,
           system: clientSystemPrompt(context),
-          context
-        })
-      )
+          context,
+        }),
+      ),
     ),
-    history
+    history,
   );
 
 export const generateAdvisorReply = async (
@@ -362,7 +505,7 @@ export const generateAdvisorReply = async (
   history: OpenAIHistory,
   transcript: string,
   model?: string,
-  context: PromptContext = {}
+  context: PromptContext = {},
 ) =>
   cleanJson<AdvisorReply>(
     await callOpenAI({
@@ -372,11 +515,16 @@ export const generateAdvisorReply = async (
       schemaName: "clarifi_advisor_reply",
       schema: advisorSchema,
       system: advisorSystemPrompt(transcript, context),
-      context
-    })
+      context,
+    }),
   );
 
-export const generateSessionRecap = async (apiKey: string, transcript: string, model?: string, context: PromptContext = {}) => {
+export const generateSessionRecap = async (
+  apiKey: string,
+  transcript: string,
+  model?: string,
+  context: PromptContext = {},
+) => {
   const system = `Produce a concise ClariFi session recap for an advisory audit trail. Use plain language and short bullet phrases. Base it only on the conversation and policy.
 
 ${adviceBoundary}
@@ -396,12 +544,15 @@ ${sessionContextText(context)}`;
       schema: recapSchema,
       system,
       context,
-      history: [{ role: "user", content: transcript }]
-    })
+      history: [{ role: "user", content: transcript }],
+    }),
   );
 };
 
-export const generatePreMeetingPrep = async (apiKey: string, model?: string) => {
+export const generatePreMeetingPrep = async (
+  apiKey: string,
+  model?: string,
+) => {
   const system = `You are ClariFi's pre-meeting preparation copilot for a Singapore College of Insurance advisory training session.
 
 ${adviceBoundary}
@@ -424,7 +575,48 @@ Return only JSON matching the schema. Keep every list item concise.`;
       schemaName: "clarifi_pre_meeting_prep",
       schema: preMeetingSchema,
       system,
-      history: [{ role: "user", content: "Generate pre-meeting preparation for this advisory session." }]
-    })
+      history: [
+        {
+          role: "user",
+          content:
+            "Generate pre-meeting preparation for this advisory session.",
+        },
+      ],
+    }),
+  );
+};
+
+export const generateProductSuggestions = async (
+  apiKey: string,
+  instruction: string,
+  catalog: ProductSuggestionCatalog,
+  model?: string,
+  context: PromptContext = {},
+) => {
+  const system = `You update an advisor-controlled product display for the ClariFi training prototype.
+
+Apply only the advisor's explicit editing instruction to the supplied illustrative catalog. Preserve categories and unspecified entries. Keep exactly three concise entries in each category. Product intent labels must be neutral descriptions of product type, not claims, justifications, suitability assessments, or financial advice.
+
+${adviceBoundary}
+
+${sessionContextText(context)}
+
+Return only JSON matching the schema.`;
+
+  return cleanJson<ProductSuggestionResult>(
+    await callOpenAI({
+      apiKey,
+      model,
+      schemaName: "clarifi_product_suggestions",
+      schema: productSuggestionsSchema,
+      system,
+      context,
+      history: [
+        {
+          role: "user",
+          content: `Advisor instruction: ${instruction}\n\nCurrent illustrative catalog:\n${JSON.stringify(catalog)}`,
+        },
+      ],
+    }),
   );
 };

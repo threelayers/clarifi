@@ -85,6 +85,11 @@ export type DecisionOption = {
   clientSummary: string;
 };
 
+export type ProductSuggestionCatalog = Record<
+  string,
+  Array<{ name: string; intent: string }>
+>;
+
 export type AuthUser = {
   id: string;
   email: string;
@@ -144,4 +149,7 @@ export type SessionRecord = {
   policyDocuments: PolicyDocumentSummary[];
 };
 
-export type SessionSummary = Pick<SessionRecord, "id" | "title" | "status" | "joinCode" | "version" | "updatedAt">;
+export type SessionSummary = Pick<
+  SessionRecord,
+  "id" | "title" | "status" | "joinCode" | "version" | "updatedAt"
+>;
