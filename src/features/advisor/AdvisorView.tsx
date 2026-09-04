@@ -240,30 +240,99 @@ export function AdvisorView(props: Props) {
             selectedOptions={selectedDecisions}
             onToggle={props.onToggleDecision}
           />
-          <div className="mt-4 grid gap-2">
-            <button
-              className="primary-button justify-center"
-              onClick={props.onGenerateRecap}
-              disabled={props.recapLoading}
-            >
-              {props.recapLoading ? (
-                <LoaderCircle className="animate-spin" size={15} />
-              ) : (
-                <Sparkles size={15} />
-              )}
-              {props.recapLoading ? "Generating..." : "Generate recap"}
-            </button>
-            <button
-              className="secondary-button justify-center"
-              onClick={props.onApproveRecap}
-              disabled={!props.recap || props.recapApproved}
-            >
-              {props.recapApproved ? "Recap approved" : "Approve recap"}
-            </button>
-          </div>
+          <RecapActions
+            recap={props.recap}
+            loading={props.recapLoading}
+            approved={props.recapApproved}
+            onGenerate={props.onGenerateRecap}
+            onApprove={props.onApproveRecap}
+          />
         </div>
       </aside>
     </div>
+  );
+}
+
+function RecapActions({
+  recap,
+  loading,
+  approved,
+  onGenerate,
+  onApprove,
+}: {
+  recap: Recap | null;
+  loading: boolean;
+  approved: boolean;
+  onGenerate: () => void;
+  onApprove: () => void;
+}) {
+  const status = approved
+    ? "Approved"
+    : recap
+      ? "Draft ready"
+      : "Not generated";
+  const guidance = approved
+    ? "The approved recap is ready for follow-up."
+    : recap
+      ? "Review the draft before approving it."
+      : "Create a structured summary of this session.";
+
+  return (
+    <section className="mt-5 rounded-lg border border-[#D7E0E7] bg-[#F6F9FB] p-3.5">
+      <div className="mb-3 flex items-start gap-3">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#E5F2FA] text-sci">
+          {approved ? <CheckCircle2 size={18} /> : <Sparkles size={18} />}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold text-[#182230]">
+              Session recap
+            </h3>
+            <span
+              className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-bold ${
+                approved
+                  ? "bg-[#E7F4EA] text-[#187532]"
+                  : recap
+                    ? "bg-[#E5F2FA] text-sci"
+                    : "bg-white text-[#667085]"
+              }`}
+            >
+              {status}
+            </span>
+          </div>
+          <p className="mt-1 text-xs leading-5 text-[#667085]">{guidance}</p>
+        </div>
+      </div>
+
+      <div className="grid gap-2">
+        <button
+          type="button"
+          className="flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-sci px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#075782] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sci focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-60"
+          onClick={onGenerate}
+          disabled={loading}
+        >
+          {loading ? (
+            <LoaderCircle className="animate-spin" size={16} />
+          ) : (
+            <Sparkles size={16} />
+          )}
+          {loading
+            ? "Generating recap..."
+            : recap
+              ? "Regenerate recap"
+              : "Generate recap"}
+        </button>
+        <button
+          type="button"
+          className="flex min-h-10 w-full items-center justify-center gap-2 rounded-lg border border-[#B8C7D2] bg-white px-4 py-2 text-sm font-semibold text-[#182230] transition hover:border-sci hover:text-sci focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sci focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:border-[#DCE4EA] disabled:bg-[#EEF2F5] disabled:text-[#98A2B3]"
+          onClick={onApprove}
+          disabled={!recap || approved}
+        >
+          <CheckCircle2 size={16} />
+          {approved ? "Recap approved" : "Approve recap"}
+        </button>
+      </div>
+    </section>
   );
 }
 
