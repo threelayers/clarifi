@@ -6,8 +6,6 @@ import {
   Check,
   CheckCircle2,
   ChevronRight,
-  CircleAlert,
-  CircleHelp,
   FileSearch,
   HeartPulse,
   History,
@@ -242,12 +240,6 @@ export function AdvisorView(props: Props) {
             selectedOptions={selectedDecisions}
             onToggle={props.onToggleDecision}
           />
-          <UnderstandingRecord
-            learningPoints={props.learningPoints}
-            coverageItems={props.coverageItems}
-            selectedIds={props.selectedCoverageIds}
-            recap={props.recap}
-          />
           <div className="mt-4 grid gap-2">
             <button
               className="primary-button justify-center"
@@ -294,77 +286,6 @@ function TabButton({
       {icon}
       {label}
     </button>
-  );
-}
-
-const understandingMeta = {
-  covered: {
-    label: "Understood well",
-    bg: "bg-[#EAF7EE]",
-    text: "text-[#248A3D]",
-    icon: CheckCircle2,
-  },
-  action: {
-    label: "Needs clarification",
-    bg: "bg-[#FFF4DF]",
-    text: "text-[#B26700]",
-    icon: CircleHelp,
-  },
-  not_covered: {
-    label: "Not covered or unknown",
-    bg: "bg-[#FDEBEC]",
-    text: "text-[#C8102E]",
-    icon: CircleAlert,
-  },
-};
-
-function UnderstandingRows({
-  learningPoints,
-  coverageItems,
-  selectedIds,
-}: {
-  learningPoints: Understanding[];
-  coverageItems: CoverageItem[];
-  selectedIds: string[];
-}) {
-  const rows = learningPoints.length
-    ? learningPoints
-    : coverageItems.map(
-        (item) =>
-          ({
-            point: item.label,
-            status: selectedIds.includes(item.id)
-              ? "covered"
-              : item.tone === "red"
-                ? "not_covered"
-                : "action",
-          }) as Understanding,
-      );
-  return (
-    <div className="divide-y divide-[#E5EAF0]">
-      {rows.map((item, index) => {
-        const meta = understandingMeta[item.status];
-        const Icon = meta.icon;
-        return (
-          <div
-            key={`${item.point}-${index}`}
-            className="flex items-center gap-3 py-3"
-          >
-            <div
-              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${meta.bg} ${meta.text}`}
-            >
-              <Icon size={16} />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-semibold">{item.point}</div>
-              <div className={`mt-0.5 text-[11px] font-semibold ${meta.text}`}>
-                {meta.label}
-              </div>
-            </div>
-          </div>
-        );
-      })}
-    </div>
   );
 }
 
@@ -482,49 +403,6 @@ function DecisionMenu({
         <div className="mt-2 rounded-md bg-[#F4F7F9] px-3 py-2 text-[11px] font-medium text-[#475467]">
           Shared:{" "}
           {selectedOptions.map((item) => shortLabel(item.title)).join(", ")}
-        </div>
-      )}
-    </section>
-  );
-}
-
-function UnderstandingRecord({
-  learningPoints,
-  coverageItems,
-  selectedIds,
-  recap,
-}: {
-  learningPoints: Understanding[];
-  coverageItems: CoverageItem[];
-  selectedIds: string[];
-  recap: Recap | null;
-}) {
-  return (
-    <section className="border-t border-[#DCE4EA] pt-4">
-      <div className="mb-2">
-        <h3 className="text-xs font-bold uppercase tracking-wide text-[#475467]">
-          Understanding record
-        </h3>
-        <p className="mt-1 text-[11px] text-[#667085]">
-          Likely gaps now appear with learning status.
-        </p>
-      </div>
-      <UnderstandingRows
-        learningPoints={learningPoints}
-        coverageItems={coverageItems}
-        selectedIds={selectedIds}
-      />
-      {recap && (
-        <div className="mt-3 flex gap-2 text-[10px] font-semibold">
-          <span className="rounded bg-[#EAF7EE] px-2 py-1 text-[#248A3D]">
-            {recap.covered.length} covered
-          </span>
-          <span className="rounded bg-[#FDEBEC] px-2 py-1 text-[#C8102E]">
-            {recap.notCovered.length} excluded
-          </span>
-          <span className="rounded bg-[#FFF4DF] px-2 py-1 text-[#B26700]">
-            {recap.followUps.length} follow-ups
-          </span>
         </div>
       )}
     </section>

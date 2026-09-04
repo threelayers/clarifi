@@ -6,8 +6,6 @@ import {
   CalendarClock,
   CheckCircle2,
   ChevronDown,
-  CircleAlert,
-  CircleHelp,
   HeartPulse,
   Home,
   MessageSquareText,
@@ -137,27 +135,6 @@ const profileFields = myInfoSections
   .filter((field) => profileIcons[field.label])
   .slice(0, 5);
 
-const understandingMeta = {
-  covered: {
-    label: "Understood well",
-    background: "bg-[#EAF7EE]",
-    text: "text-[#248A3D]",
-    icon: CheckCircle2,
-  },
-  action: {
-    label: "Needs clarification",
-    background: "bg-[#FFF4DF]",
-    text: "text-[#B26700]",
-    icon: CircleHelp,
-  },
-  not_covered: {
-    label: "Not covered or unknown",
-    background: "bg-[#FDEBEC]",
-    text: "text-[#C8102E]",
-    icon: CircleAlert,
-  },
-};
-
 export function AdvisorDashboard(props: AdvisorDashboardProps) {
   const sessionText = [
     props.sessionTranscript,
@@ -285,24 +262,11 @@ export function AdvisorDashboard(props: AdvisorDashboardProps) {
       </div>
 
       <div className="grid gap-5 2xl:grid-cols-[1.15fr_.85fr]">
-        <section className="rounded-lg border border-[#DCE4EA] bg-white p-5">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <div>
-              <h2 className="font-semibold">Understanding record</h2>
-              <p className="mt-1 text-xs text-[#667085]">
-                Learning points and unresolved coverage signals.
-              </p>
-            </div>
-            <span className="text-xs font-semibold text-[#667085]">
-              {props.learningPoints.length || total} signals
-            </span>
-          </div>
-          <UnderstandingRows
-            learningPoints={props.learningPoints}
-            coverageItems={props.coverageItems}
-            selectedIds={props.selectedCoverageIds}
-          />
-        </section>
+        <FollowUpAreas
+          learningPoints={props.learningPoints}
+          coverageItems={props.coverageItems}
+          selectedIds={props.selectedCoverageIds}
+        />
         <div className="space-y-5">
           <section className="rounded-lg border border-[#DCE4EA] bg-white p-5">
             <h2 className="font-semibold">Session progress</h2>
@@ -345,6 +309,126 @@ export function AdvisorDashboard(props: AdvisorDashboardProps) {
         </div>
       </div>
     </div>
+  );
+}
+
+const followUpSchemes: Record<
+  string,
+  { category: string; color: string; keywords: string[] }
+> = {
+  "hospital-bills": {
+    category: "Hospital & surgical",
+    color: "#1976D2",
+    keywords: ["hospital", "ward", "surgical"],
+  },
+  "income-risk": {
+    category: "Income continuity",
+    color: "#7C3AED",
+    keywords: ["income", "salary", "work"],
+  },
+  "critical-illness": {
+    category: "Critical illness",
+    color: "#D97706",
+    keywords: ["critical", "lump-sum", "lump sum"],
+  },
+  "outpatient-mental-health": {
+    category: "Mental wellness",
+    color: "#0891B2",
+    keywords: ["mental", "therapy", "counselling"],
+  },
+  "pre-existing": {
+    category: "Underwriting",
+    color: "#4F46E5",
+    keywords: ["pre-existing", "waiting", "waiting period"],
+  },
+  affordability: {
+    category: "Affordability",
+    color: "#C026D3",
+    keywords: ["affordability", "cpf", "premium"],
+  },
+};
+
+function FollowUpAreas({
+  learningPoints,
+  coverageItems,
+  selectedIds,
+}: {
+  learningPoints: Understanding[];
+  coverageItems: CoverageItem[];
+  selectedIds: string[];
+}) {
+  const areas = coverageItems
+    .map((item) => {
+      const scheme = followUpSchemes[item.id];
+      const learningPoint = learningPoints.find((point) => {
+        const text = point.point.toLowerCase();
+        return scheme.keywords.some((keyword) => text.includes(keyword));
+      });
+      let priority = selectedIds.includes(item.id)
+        ? 28
+        : item.tone === "red"
+          ? 88
+          : item.tone === "amber"
+            ? 68
+            : 48;
+      if (learningPoint?.status === "covered") priority = 22;
+      if (learningPoint?.status === "action") priority = 74;
+      if (learningPoint?.status === "not_covered") priority = 92;
+      return { item, scheme, priority };
+    })
+    .sort((a, b) => b.priority - a.priority);
+
+  return (
+    <section className="rounded-lg border border-[#DCE4EA] bg-white p-5">
+      <div className="mb-5 flex items-end justify-between gap-4">
+        <div>
+          <h2 className="font-semibold">Follow-up areas</h2>
+          <p className="mt-1 text-xs text-[#667085]">
+            Priority comparison grouped by discussion scheme.
+          </p>
+        </div>
+        <span className="shrink-0 text-[10px] font-semibold text-[#667085]">
+          Higher = revisit sooner
+        </span>
+      </div>
+      <div className="space-y-4">
+        {areas.map(({ item, scheme, priority }) => (
+          <div key={item.id}>
+            <div className="mb-1.5 flex items-end justify-between gap-3">
+              <div className="min-w-0">
+                <div className="truncate text-xs font-semibold text-[#344054]">
+                  {item.label}
+                </div>
+                <div
+                  className="mt-0.5 text-[9px] font-bold uppercase"
+                  style={{ color: scheme.color }}
+                >
+                  {scheme.category}
+                </div>
+              </div>
+              <span className="text-xs font-bold text-[#475467]">
+                {priority}%
+              </span>
+            </div>
+            <div className="relative h-2 rounded-full bg-[#E9EDF1]">
+              <div
+                className="h-full rounded-full opacity-75"
+                style={{ width: `${priority}%`, backgroundColor: scheme.color }}
+              />
+              <span
+                className="absolute top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] border-white shadow-[0_1px_5px_rgba(0,0,0,.22)]"
+                style={{ left: `${priority}%`, backgroundColor: scheme.color }}
+                aria-hidden="true"
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="mt-5 flex items-center justify-between border-t border-[#E5EAF0] pt-3 text-[9px] font-semibold text-[#8A94A3]">
+        <span>0 · Lower priority</span>
+        <span>100 · Higher priority</span>
+      </div>
+    </section>
   );
 }
 
@@ -782,56 +866,6 @@ function UnderstandingChart({ categories: items }: { categories: Category[] }) {
         </div>
       )}
     </section>
-  );
-}
-
-function UnderstandingRows({
-  learningPoints,
-  coverageItems,
-  selectedIds,
-}: {
-  learningPoints: Understanding[];
-  coverageItems: CoverageItem[];
-  selectedIds: string[];
-}) {
-  const rows = learningPoints.length
-    ? learningPoints
-    : coverageItems.map(
-        (item) =>
-          ({
-            point: item.label,
-            status: selectedIds.includes(item.id)
-              ? "covered"
-              : item.tone === "red"
-                ? "not_covered"
-                : "action",
-          }) as Understanding,
-      );
-  return (
-    <div className="divide-y divide-[#E5EAF0]">
-      {rows.map((item, index) => {
-        const meta = understandingMeta[item.status];
-        const Icon = meta.icon;
-        return (
-          <div
-            key={`${item.point}-${index}`}
-            className="flex items-center gap-3 py-3"
-          >
-            <div
-              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${meta.background} ${meta.text}`}
-            >
-              <Icon size={16} />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-semibold">{item.point}</div>
-              <div className={`mt-0.5 text-[11px] font-semibold ${meta.text}`}>
-                {meta.label}
-              </div>
-            </div>
-          </div>
-        );
-      })}
-    </div>
   );
 }
 
