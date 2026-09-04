@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   ChevronRight,
   FileSearch,
+  GripVertical,
   HeartPulse,
   History,
   LayoutDashboard,
@@ -36,6 +37,35 @@ import type {
 } from "@/types/clarifi";
 import { AdvisorDashboard as ClientIntelligenceDashboard } from "./AdvisorDashboard";
 import { AdvisorSessionCapture } from "./AdvisorSessionCapture";
+
+const ADVISOR_RAIL_WIDTH_KEY = "clarifi.advisorSessionRailWidth";
+const ADVISOR_RAIL_MIN_WIDTH = 300;
+const ADVISOR_RAIL_DEFAULT_WIDTH = 330;
+const ADVISOR_RAIL_MAX_WIDTH = 520;
+
+const advisorRailMaxWidth = () => {
+  if (typeof window === "undefined") return ADVISOR_RAIL_MAX_WIDTH;
+  return Math.min(
+    ADVISOR_RAIL_MAX_WIDTH,
+    Math.max(ADVISOR_RAIL_MIN_WIDTH, window.innerWidth - 910),
+  );
+};
+
+const clampAdvisorRailWidth = (width: number) =>
+  Math.min(
+    advisorRailMaxWidth(),
+    Math.max(ADVISOR_RAIL_MIN_WIDTH, Math.round(width)),
+  );
+
+const savedAdvisorRailWidth = () => {
+  if (typeof window === "undefined") return ADVISOR_RAIL_DEFAULT_WIDTH;
+  const stored = window.localStorage.getItem(ADVISOR_RAIL_WIDTH_KEY);
+  if (stored === null) return ADVISOR_RAIL_DEFAULT_WIDTH;
+  const saved = Number(stored);
+  return Number.isFinite(saved)
+    ? clampAdvisorRailWidth(saved)
+    : ADVISOR_RAIL_DEFAULT_WIDTH;
+};
 
 type Props = {
   messages: AdvisorMessage[];
@@ -74,7 +104,11 @@ export function AdvisorView(props: Props) {
   );
   const [input, setInput] = useState("");
   const [policyQuery, setPolicyQuery] = useState("income hospital");
+  const [railWidth, setRailWidth] = useState(savedAdvisorRailWidth);
+  const [isResizingRail, setIsResizingRail] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const railRef = useRef<HTMLDivElement>(null);
+  const railWidthRef = useRef(railWidth);
   const selectedDecisions = useMemo(
     () =>
       props.decisionOptions.filter((item) =>
@@ -88,6 +122,49 @@ export function AdvisorView(props: Props) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [props.messages, props.loading, tab]);
 
+  useEffect(() => {
+    railWidthRef.current = railWidth;
+  }, [railWidth]);
+
+  useEffect(() => {
+    if (!isResizingRail) return;
+
+    const onMove = (event: globalThis.PointerEvent) => {
+      const left = railRef.current?.getBoundingClientRect().left || 0;
+      const nextWidth = clampAdvisorRailWidth(event.clientX - left);
+      railWidthRef.current = nextWidth;
+      setRailWidth(nextWidth);
+    };
+    const onUp = () => {
+      setIsResizingRail(false);
+      window.localStorage.setItem(
+        ADVISOR_RAIL_WIDTH_KEY,
+        String(railWidthRef.current),
+      );
+    };
+
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+
+    return () => {
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+  }, [isResizingRail]);
+
+  const persistRailWidth = (width: number) => {
+    const nextWidth = clampAdvisorRailWidth(width);
+    railWidthRef.current = nextWidth;
+    setRailWidth(nextWidth);
+    window.localStorage.setItem(ADVISOR_RAIL_WIDTH_KEY, String(nextWidth));
+  };
+
   const send = (text = input) => {
     const value = text.trim();
     if (!value) return;
@@ -97,50 +174,94 @@ export function AdvisorView(props: Props) {
 
   return (
     <div className="flex min-h-0 flex-1 bg-[#F4F6F8]">
-      <aside className="hidden w-[330px] shrink-0 flex-col border-r border-[#DCE4EA] bg-[#EAF0F4] xl:flex">
-        <div className="border-b border-[#DCE4EA] px-5 py-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-sci text-sm font-bold text-white">
-              TL
-            </div>
-            <div className="min-w-0">
-              <div className="truncate text-sm font-semibold">
-                {profile.name}
+      <div
+        ref={railRef}
+        className="relative hidden shrink-0 xl:block"
+        style={{ width: railWidth }}
+      >
+        <aside className="flex h-full w-full flex-col border-r border-[#DCE4EA] bg-[#EAF0F4]">
+          <div className="border-b border-[#DCE4EA] px-5 py-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-sci text-sm font-bold text-white">
+                TL
               </div>
-              <div className="truncate text-xs text-[#667085]">
-                {profile.role}
+              <div className="min-w-0">
+                <div className="truncate text-sm font-semibold">
+                  {profile.name}
+                </div>
+                <div className="truncate text-xs text-[#667085]">
+                  {profile.role}
+                </div>
               </div>
             </div>
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {["First-time", "Freelance", "Hospital cover"].map((item) => (
+                <span key={item} className="apple-chip text-[10px]">
+                  {item}
+                </span>
+              ))}
+            </div>
           </div>
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            {["First-time", "Freelance", "Hospital cover"].map((item) => (
-              <span key={item} className="apple-chip text-[10px]">
-                {item}
-              </span>
-            ))}
-          </div>
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto p-4">
-          <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-[#667085]">
-            Session capture
-          </div>
-          <AdvisorSessionCapture
-            clientNotes={props.clientNotes}
-            onClientNotesChange={props.onClientNotesChange}
-            sessionTranscript={props.sessionTranscript}
-            onSessionTranscriptChange={props.onSessionTranscriptChange}
-            handwrittenNoteImage={props.handwrittenNoteImage}
-            onHandwrittenNoteImageChange={props.onHandwrittenNoteImageChange}
-          />
-          <div className="mt-4">
-            <AdvisorPolicyViewer
-              {...props}
-              query={policyQuery}
-              onQuery={setPolicyQuery}
+          <div className="min-h-0 flex-1 overflow-y-auto p-4">
+            <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-[#667085]">
+              Session capture
+            </div>
+            <AdvisorSessionCapture
+              clientNotes={props.clientNotes}
+              onClientNotesChange={props.onClientNotesChange}
+              sessionTranscript={props.sessionTranscript}
+              onSessionTranscriptChange={props.onSessionTranscriptChange}
+              handwrittenNoteImage={props.handwrittenNoteImage}
+              onHandwrittenNoteImageChange={props.onHandwrittenNoteImageChange}
             />
+            <div className="mt-4">
+              <AdvisorPolicyViewer
+                {...props}
+                query={policyQuery}
+                onQuery={setPolicyQuery}
+              />
+            </div>
           </div>
+        </aside>
+        <div
+          role="separator"
+          tabIndex={0}
+          aria-label="Resize session capture sidebar"
+          aria-orientation="vertical"
+          aria-valuemin={ADVISOR_RAIL_MIN_WIDTH}
+          aria-valuemax={advisorRailMaxWidth()}
+          aria-valuenow={railWidth}
+          className={`absolute right-[-11px] top-1/2 z-30 flex h-16 w-5 -translate-y-1/2 cursor-col-resize items-center justify-center rounded-r-md border border-l-0 border-[#C8D4DD] bg-white text-[#74818C] shadow-sm outline-none transition hover:border-sci hover:bg-[#F2F8FC] hover:text-sci focus-visible:border-sci focus-visible:ring-2 focus-visible:ring-sci ${
+            isResizingRail ? "border-sci bg-[#E5F2FA] text-sci" : ""
+          }`}
+          onPointerDown={(event) => {
+            event.preventDefault();
+            setIsResizingRail(true);
+          }}
+          onDoubleClick={() => persistRailWidth(ADVISOR_RAIL_DEFAULT_WIDTH)}
+          onKeyDown={(event) => {
+            if (event.key === "ArrowLeft") {
+              event.preventDefault();
+              persistRailWidth(railWidth - 24);
+            }
+            if (event.key === "ArrowRight") {
+              event.preventDefault();
+              persistRailWidth(railWidth + 24);
+            }
+            if (event.key === "Home") {
+              event.preventDefault();
+              persistRailWidth(ADVISOR_RAIL_MIN_WIDTH);
+            }
+            if (event.key === "End") {
+              event.preventDefault();
+              persistRailWidth(advisorRailMaxWidth());
+            }
+          }}
+          title="Drag to resize the session sidebar. Double-click to reset."
+        >
+          <GripVertical size={14} />
         </div>
-      </aside>
+      </div>
 
       <main className="flex min-w-0 flex-1 flex-col">
         <div className="flex shrink-0 items-center border-b border-[#DCE4EA] bg-white px-5 py-3">
