@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { AdvisorClientSelector } from "@/features/advisor/AdvisorClientSelector";
 import { AdvisorView } from "@/features/advisor/AdvisorView";
 import { LoginPage } from "@/features/auth/LoginPage";
 import { ClientView } from "@/features/client/ClientView";
@@ -8,6 +10,12 @@ import { useClariFiApp } from "./useClariFiApp";
 
 export function App() {
   const clarifi = useClariFiApp();
+  const [advisorWorkspaceOpen, setAdvisorWorkspaceOpen] = useState(false);
+
+  const handleLogout = () => {
+    setAdvisorWorkspaceOpen(false);
+    void clarifi.auth.logout();
+  };
 
   if (!clarifi.auth.ready) {
     return (
@@ -28,6 +36,16 @@ export function App() {
     );
   }
 
+  if (clarifi.auth.currentUser.role === "advisor" && !advisorWorkspaceOpen) {
+    return (
+      <AdvisorClientSelector
+        advisorName={clarifi.auth.currentUser.name}
+        onOpenDemo={() => setAdvisorWorkspaceOpen(true)}
+        onLogout={handleLogout}
+      />
+    );
+  }
+
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-paper text-ink">
       <Header
@@ -39,8 +57,13 @@ export function App() {
         sessionTitle={clarifi.sync.session?.title || ""}
         onViewChange={clarifi.setView}
         onSettings={clarifi.settings.open}
-        onLogout={clarifi.auth.logout}
+        onLogout={handleLogout}
         onSession={clarifi.sync.open}
+        onManageClients={
+          clarifi.auth.currentUser.role === "advisor"
+            ? () => setAdvisorWorkspaceOpen(false)
+            : undefined
+        }
       />
       {clarifi.view === "client" ? (
         <ClientView

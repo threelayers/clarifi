@@ -1,4 +1,4 @@
-import { CheckCircle2, Cloud, Database, LogOut, MessageSquareText, Settings } from "lucide-react";
+import { CheckCircle2, Cloud, Database, LogOut, MessageSquareText, Settings, Users } from "lucide-react";
 import type { AuthUser } from "@/types/clarifi";
 
 type HeaderProps = {
@@ -12,9 +12,10 @@ type HeaderProps = {
   onSettings: () => void;
   onLogout: () => void;
   onSession: () => void;
+  onManageClients?: () => void;
 };
 
-export function Header({ view, hasApiKey, currentUser, syncStatus, persistenceMode, sessionTitle, onViewChange, onSettings, onLogout, onSession }: HeaderProps) {
+export function Header({ view, hasApiKey, currentUser, syncStatus, persistenceMode, sessionTitle, onViewChange, onSettings, onLogout, onSession, onManageClients }: HeaderProps) {
   return (
     <header className="flex h-16 shrink-0 items-center justify-between gap-4 border-b border-line bg-white/72 px-5 shadow-[0_10px_40px_rgba(0,0,0,.045)] backdrop-blur-2xl">
       <div className="flex min-w-[210px] items-center gap-3">
@@ -47,6 +48,15 @@ export function Header({ view, hasApiKey, currentUser, syncStatus, persistenceMo
       </div>
 
       <div className="flex min-w-[260px] items-center justify-end gap-3">
+        {onManageClients && (
+          <button
+            type="button"
+            onClick={onManageClients}
+            className="hidden min-h-9 items-center gap-1.5 rounded-lg border border-[#DCE4EA] bg-white px-3 text-xs font-semibold text-[#475467] transition hover:border-[#9FC9E5] hover:text-sci md:flex"
+          >
+            <Users size={14} /> Clients
+          </button>
+        )}
         {currentUser && (
           <button
             className={`apple-chip hidden items-center gap-1.5 lg:flex ${syncStatus === "error" ? "text-[#C8102E]" : "text-sci"}`}
