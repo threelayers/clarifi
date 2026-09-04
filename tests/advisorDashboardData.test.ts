@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  advisorDashboardSnapshots,
   buildUnderstandingSummary,
   coverageDelta,
   coverageThreshold,
+  dashboardCategoryIds,
+  getDashboardSnapshot,
   selectCheckpoint,
   sortCategoryIdsByUnmetNeed,
 } from "../src/features/advisor/dashboardData";
@@ -69,5 +72,22 @@ describe("advisor dashboard calculations", () => {
         },
       ),
     ).toContain("understands Integrated Shield Plan");
+  });
+
+  it("contains six fixed sessions beginning in March 2026", () => {
+    expect(advisorDashboardSnapshots).toHaveLength(6);
+    expect(advisorDashboardSnapshots[0].sessionNumber).toBe(1);
+    expect(advisorDashboardSnapshots[0].dateLabel).toContain("Mar 2026");
+    expect(advisorDashboardSnapshots.at(-1)?.sessionNumber).toBe(6);
+    expect(getDashboardSnapshot(999).sessionNumber).toBe(6);
+  });
+
+  it("includes a fixed timestamp and all five categories at every checkpoint", () => {
+    for (const snapshot of advisorDashboardSnapshots) {
+      expect(snapshot.timestamp).toContain("SGT");
+      for (const checkpoint of snapshot.checkpoints) {
+        expect(Object.keys(checkpoint.categories)).toEqual(dashboardCategoryIds);
+      }
+    }
   });
 });
