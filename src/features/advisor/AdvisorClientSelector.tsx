@@ -241,7 +241,7 @@ export function AdvisorClientSelector({
                 onClick={onOpenDemo}
                 className="mt-5 flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-sci px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-[#075782]"
               >
-                Open Tan Li Wen demo <ArrowRight size={16} />
+                Open Tan Li Wen <ArrowRight size={16} />
               </button>
             ) : (
               <div className="mt-5 rounded-lg border border-[#DCE4EA] bg-[#F5F8FA] p-3">
