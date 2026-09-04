@@ -1,19 +1,24 @@
 import {
+  ArrowRight,
   Baby,
   Banknote,
   BriefcaseBusiness,
   CalendarClock,
   CheckCircle2,
+  ChevronDown,
   CircleAlert,
   CircleHelp,
   HeartPulse,
   Home,
+  MessageSquareText,
   ShieldCheck,
   Sparkles,
+  Target,
   TrendingUp,
   UserRound,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { useState } from "react";
 import { myInfoSections } from "@/domain/sessionData";
 import type {
   AdvisorMessage,
@@ -392,12 +397,43 @@ function CoveragePortfolio({ categories: items }: { categories: Category[] }) {
 }
 
 function ProductPathways({ suggestions }: { suggestions: Category[] }) {
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const descriptors: Record<string, string> = {
     shield: "Hospital expense protection",
     critical: "Lump-sum recovery support",
     life: "Family financial protection",
     retirement: "Long-term income planning",
     investment: "Protection with market exposure",
+  };
+  const pathwayDetails: Record<
+    string,
+    { signal: string; need: string; intent: string }
+  > = {
+    shield: {
+      signal: "Hospital bill uncertainty",
+      need: "Medical expense protection",
+      intent: "Clarify eligible hospital costs",
+    },
+    critical: {
+      signal: "No recorded lump-sum cover",
+      need: "Recovery cash support",
+      intent: "Explore critical illness protection",
+    },
+    life: {
+      signal: "No recorded life cover",
+      need: "Family financial continuity",
+      intent: "Explore dependant protection",
+    },
+    retirement: {
+      signal: "Long-term income goal",
+      need: "Future income continuity",
+      intent: "Explore retirement planning",
+    },
+    investment: {
+      signal: "Growth and protection interest",
+      need: "Long-term wealth participation",
+      intent: "Explore linked protection",
+    },
   };
   return (
     <section className="rounded-lg border border-[#DCE4EA] bg-white p-5">
@@ -412,34 +448,159 @@ function ProductPathways({ suggestions }: { suggestions: Category[] }) {
           <Sparkles size={11} /> PREDICTION POC
         </span>
       </div>
-      <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
+      <div className="space-y-3">
         {suggestions.map((category, index) => {
           const Icon = category.icon;
           const ranks = ["Primary", "Explore", "Monitor"];
+          const expanded = expandedId === category.id;
+          const detail = pathwayDetails[category.id];
           return (
-            <div
-              key={category.id}
-              className="flex min-h-[86px] items-center gap-3 rounded-lg border border-[#E5EAF0] bg-[#F8FAFB] p-3"
-            >
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-white text-sci shadow-sm">
-                <Icon size={21} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="text-[10px] font-bold uppercase text-sci">
-                  {ranks[index]}
+            <div key={category.id}>
+              <button
+                type="button"
+                aria-expanded={expanded}
+                onClick={() => setExpandedId(expanded ? null : category.id)}
+                className={`flex min-h-[86px] w-full items-center gap-3 rounded-lg border p-3 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-sci focus-visible:ring-offset-2 ${
+                  expanded
+                    ? "border-[#9CCDFD] bg-[#F2F8FE]"
+                    : "border-[#E5EAF0] bg-[#F8FAFB] hover:border-[#C5D9EA] hover:bg-white"
+                }`}
+              >
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-white text-sci shadow-sm">
+                  <Icon size={21} />
                 </div>
-                <div className="mt-0.5 truncate text-xs font-semibold">
-                  {category.label}
+                <div className="min-w-0 flex-1">
+                  <div className="text-[10px] font-bold uppercase text-sci">
+                    {ranks[index]}
+                  </div>
+                  <div className="mt-0.5 truncate text-xs font-semibold">
+                    {category.label}
+                  </div>
+                  <div className="mt-1 truncate text-[11px] text-[#667085]">
+                    {descriptors[category.id]}
+                  </div>
                 </div>
-                <div className="mt-1 truncate text-[11px] text-[#667085]">
-                  {descriptors[category.id]}
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[#667085]">
+                  <ChevronDown
+                    size={17}
+                    className={`transition-transform ${expanded ? "rotate-180" : ""}`}
+                  />
                 </div>
-              </div>
+              </button>
+              {expanded && (
+                <ProductPathwayDetail
+                  category={category}
+                  descriptor={descriptors[category.id]}
+                  detail={detail}
+                />
+              )}
             </div>
           );
         })}
       </div>
     </section>
+  );
+}
+
+function ProductPathwayDetail({
+  category,
+  descriptor,
+  detail,
+}: {
+  category: Category;
+  descriptor: string;
+  detail: { signal: string; need: string; intent: string };
+}) {
+  const ProductIcon = category.icon;
+  return (
+    <div className="mt-2 rounded-lg border border-[#CFE2F3] bg-white p-4 shadow-[0_8px_24px_rgba(30,64,96,.06)]">
+      <div className="grid gap-3 border-b border-[#E5EAF0] pb-4 sm:grid-cols-2">
+        <div>
+          <div className="text-[10px] font-bold uppercase text-[#667085]">
+            Product pathway
+          </div>
+          <div className="mt-1 text-sm font-semibold">{category.label}</div>
+        </div>
+        <div>
+          <div className="text-[10px] font-bold uppercase text-[#667085]">
+            Discussion intent
+          </div>
+          <div className="mt-1 text-sm font-semibold">{descriptor}</div>
+        </div>
+      </div>
+
+      <div className="mt-4">
+        <div className="mb-3 text-[10px] font-bold uppercase text-[#667085]">
+          Why it surfaced
+        </div>
+        <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
+          <FlowNode
+            icon={MessageSquareText}
+            eyebrow="Session signal"
+            label={detail.signal}
+          />
+          <FlowArrow />
+          <FlowNode icon={Target} eyebrow="Client need" label={detail.need} />
+          <FlowArrow />
+          <FlowNode
+            icon={ProductIcon}
+            eyebrow="Product"
+            label={category.label}
+            active
+          />
+          <FlowArrow />
+          <FlowNode
+            icon={CheckCircle2}
+            eyebrow="Intent"
+            label={detail.intent}
+          />
+        </div>
+      </div>
+      <p className="mt-3 text-[10px] leading-4 text-[#667085]">
+        Context signal only. Suitability and recommendations remain with the
+        licensed advisor.
+      </p>
+    </div>
+  );
+}
+
+function FlowNode({
+  icon: Icon,
+  eyebrow,
+  label,
+  active = false,
+}: {
+  icon: LucideIcon;
+  eyebrow: string;
+  label: string;
+  active?: boolean;
+}) {
+  return (
+    <div
+      className={`flex min-h-[92px] min-w-0 flex-1 flex-col justify-between rounded-lg border p-3 ${
+        active
+          ? "border-[#9CCDFD] bg-[#EEF7FF]"
+          : "border-[#E5EAF0] bg-[#F8FAFB]"
+      }`}
+    >
+      <Icon size={18} className={active ? "text-sci" : "text-[#667085]"} />
+      <div className="mt-3">
+        <div className="text-[9px] font-bold uppercase text-[#8A94A3]">
+          {eyebrow}
+        </div>
+        <div className="mt-1 text-[10px] font-semibold leading-4 text-[#344054]">
+          {label}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FlowArrow() {
+  return (
+    <div className="flex shrink-0 justify-center text-[#98A2B3]">
+      <ArrowRight size={16} className="rotate-90 sm:rotate-0" />
+    </div>
   );
 }
 
